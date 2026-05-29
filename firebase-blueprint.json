@@ -1,0 +1,65 @@
+{
+  "entities": {
+    "TestCard": {
+      "title": "Test Card",
+      "description": "An experimental definition containing hypothesis and variants.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "hypothesis": { "type": "string" },
+        "independent_variable": { "type": "string", "enum": ["model", "prompt", "role", "reasoning_strategy", "parameter"] },
+        "variants": { "type": "array" },
+        "evaluation_rubric": { "type": "object" },
+        "input_schema": { "type": "object" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "ownerId": { "type": "string" },
+        "isPublic": { "type": "boolean" },
+        "version": { "type": "number" },
+        "parentCardId": { "type": "string" },
+        "authorName": { "type": "string" }
+      },
+      "required": ["name", "hypothesis", "independent_variable", "ownerId"]
+    },
+    "TestCardVersion": {
+      "title": "Test Card Version",
+      "description": "A snapshot of a Test Card at a specific point in time.",
+      "type": "object",
+      "properties": {
+        "testCardId": { "type": "string" },
+        "version": { "type": "number" },
+        "data": { "type": "object" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["testCardId", "version", "data"]
+    },
+    "Experiment": {
+      "title": "Experiment",
+      "description": "A single execution of a Test Card.",
+      "type": "object",
+      "properties": {
+        "testCardId": { "type": "string" },
+        "input": { "type": "object" },
+        "results": { "type": "array" },
+        "verdict": { "type": "object" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "ownerId": { "type": "string" }
+      },
+      "required": ["testCardId", "ownerId"]
+    }
+  },
+  "firestore": {
+    "test_cards": {
+      "schema": "TestCard",
+      "description": "Collection of experimental protocols."
+    },
+    "test_card_versions": {
+      "schema": "TestCardVersion",
+      "description": "Revision history for protocols."
+    },
+    "experiments": {
+      "schema": "Experiment",
+      "description": "Collection of recorded experimental runs."
+    }
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "name": "Verdict Lab",
+  "description": "Behavioral evaluation infrastructure for AI systems. Design experiments, isolate variables, and evaluate LLM outputs with the JDay judgment engine.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
