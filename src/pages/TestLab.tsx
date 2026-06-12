@@ -2,10 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { collection, addDoc, onSnapshot, query, where, orderBy, deleteDoc, doc, serverTimestamp, updateDoc, getDocs, limit } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useStore } from '../store/useStore';
-import { Plus, Trash2, Save, X, FlaskConical, Quote, Share2, History, ChevronUp, ChevronDown, GripVertical, Library, CheckCircle2, Edit3 } from 'lucide-react';
+import { Plus, Trash2, Save, X, FlaskConical, Quote, Share2, History, ChevronUp, ChevronDown, GripVertical, Library, CheckCircle2, Edit3, Code } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence, Reorder } from 'motion/react';
 import { TEMPLATES, TestCardTemplate } from '../data/templates';
+import { PromptEditor } from '../components/PromptEditor';
 
 interface RubricMetric {
   id: string;
@@ -459,37 +460,22 @@ export function TestLab() {
 
                 <div className="space-y-8">
                   <div className="grid-header">Variant Definitions</div>
-                  <div className="space-y-6">
-                    {variants.map((v, i) => (
-                      <div key={v.id} className="space-y-2">
-                        <div className="flex justify-between items-center px-1">
-                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Variant {v.id}</span>
-                          <input 
-                            value={v.label} 
-                            onChange={e => {
-                              const newV = [...variants];
-                              newV[i].label = e.target.value;
-                              setVariants(newV);
-                            }}
-                            className="border-none bg-transparent text-right font-bold italic text-indigo-600 text-xs p-0 focus:ring-0 cursor-edit hover:underline decoration-dotted" 
-                          />
-                        </div>
-                        <div className="relative">
-                           <div className="absolute left-0 top-0 bottom-0 w-1 bg-indigo-500 rounded-full" />
-                           <textarea 
-                            value={v.prompt_template} 
-                            onChange={e => {
-                              const newV = [...variants];
-                              newV[i].prompt_template = e.target.value;
-                              setVariants(newV);
-                            }}
-                            className="lab-input pl-4 min-h-[160px] text-xs font-medium leading-relaxed resize-none border-slate-100" 
-                            placeholder={`Define prompt for ${v.label}...`}
-                          />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                    <div className="space-y-12">
+                      {variants.map((v, i) => (
+                        <PromptEditor 
+                          key={v.id}
+                          label={`Variant ${v.id}: ${v.label}`}
+                          value={v.prompt_template}
+                          knownVariables={inputVariables}
+                          onChange={(val) => {
+                            const newV = [...variants];
+                            newV[i].prompt_template = val;
+                            setVariants(newV);
+                          }}
+                          placeholder={`Enter baseline prompt for ${v.label}...`}
+                        />
+                      ))}
+                    </div>
                   
                   <div className="pt-4 flex flex-col gap-3">
                     <button onClick={handleSave} className="lab-button flex-1 flex items-center justify-center gap-2 shadow-lg shadow-indigo-200 py-3 text-xs uppercase font-extrabold tracking-widest">
