@@ -61,7 +61,7 @@ export function TestLab() {
     }
   }, [showHistory]);
 
-  const handleSave = async (isNewVersion = false) => {
+  const handleSave = async () => {
     if (!name || !hypothesis) return;
 
     try {
@@ -86,24 +86,30 @@ export function TestLab() {
         updatedAt: serverTimestamp(),
       };
 
-      if (editingId && !isNewVersion) {
-        await updateDoc(doc(db, 'test_cards', editingId), cardData);
-      } else if (editingId && isNewVersion) {
+      if (editingId) {
         // Increment version and save
         const currentCard = testCards.find(c => c.id === editingId);
         const newVersion = (currentCard?.version || 1) + 1;
         
-        // Save current state to versions collection first
-        await addDoc(collection(db, 'test_card_versions'), {
-          testCardId: editingId,
-          version: currentCard?.version || 1,
-          data: {
-            variants: currentCard.variants,
-            hypothesis: currentCard.hypothesis,
-            evaluation_rubric: currentCard.evaluation_rubric
-          },
-          createdAt: serverTimestamp()
-        });
+        // Save current card's state to versions collection first before making updates
+        if (currentCard) {
+          await addDoc(collection(db, 'test_card_versions'), {
+            testCardId: editingId,
+            version: currentCard.version || 1,
+            ownerId: user?.id,
+            data: {
+              name: currentCard.name,
+              description: currentCard.description || '',
+              hypothesis: currentCard.hypothesis,
+              independent_variable: currentCard.independent_variable,
+              variants: currentCard.variants,
+              evaluation_rubric: currentCard.evaluation_rubric,
+              input_schema: currentCard.input_schema || {},
+              isPublic: currentCard.isPublic || false,
+            },
+            createdAt: serverTimestamp()
+          });
+        }
 
         await updateDoc(doc(db, 'test_cards', editingId), {
           ...cardData,
@@ -181,16 +187,27 @@ export function TestLab() {
 
   const handleRevert = async (versionData: any) => {
     if (!editingId) return;
-    setVariants(versionData.variants);
-    setHypothesis(versionData.hypothesis);
+    
+    setName(versionData.name || '');
+    setDescription(versionData.description || '');
+    setHypothesis(versionData.hypothesis || '');
+    setIndependentVar(versionData.independent_variable || 'prompt');
+    setIsPublic(versionData.isPublic || false);
+    setVariants(versionData.variants || []);
+    
     // Rubric handling
-    const rubricArr = Object.entries(versionData.evaluation_rubric).map(([name, config]: [string, any], idx) => ({
-      id: String(idx),
-      name,
-      max: config.max,
-      weight: config.weight || 1
+    const rubricArr = Object.entries(versionData.evaluation_rubric || {}).map(([metricName, config]: [string, any], idx) => ({
+      id: String(idx) + Math.random().toString(),
+      name: metricName,
+      max: config.max ?? 10,
+      weight: config.weight ?? 1
     }));
     setRubric(rubricArr);
+    
+    // Input Schema handling
+    const placeholders = Object.keys(versionData.input_schema || {});
+    setInputVariables(placeholders.length > 0 ? placeholders : ['idea']);
+    
     setShowHistory(null);
   };
 
@@ -475,20 +492,10 @@ export function TestLab() {
                   </div>
                   
                   <div className="pt-4 flex flex-col gap-3">
-                    <div className="flex gap-4">
-                      <button onClick={() => handleSave(false)} className="lab-button flex-1 flex items-center justify-center gap-2 shadow-lg shadow-indigo-200">
-                        <Save size={16} />
-                        Save Changes
-                      </button>
-                      {editingId && (
-                        <button 
-                          onClick={() => handleSave(true)} 
-                          className="px-6 py-2 rounded-lg border border-slate-200 text-xs font-bold text-indigo-600 hover:bg-slate-50 transition-all flex items-center gap-2"
-                        >
-                          <Plus size={16} /> Save New Version
-                        </button>
-                      )}
-                    </div>
+                    <button onClick={handleSave} className="lab-button flex-1 flex items-center justify-center gap-2 shadow-lg shadow-indigo-200 py-3 text-xs uppercase font-extrabold tracking-widest">
+                      <Save size={16} />
+                      {editingId ? 'COMMIT_CHANGES_AND_INCREMENT_VERSION' : 'CREATE_PROTOCOL'}
+                    </button>
                     <button 
                       onClick={resetForm} 
                       className="w-full py-2 rounded-lg text-xs font-bold text-slate-500 hover:bg-slate-100 hover:text-slate-900 transition-all uppercase tracking-widest"

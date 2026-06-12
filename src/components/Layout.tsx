@@ -5,6 +5,7 @@ import { cn } from '../lib/utils';
 import { auth } from '../lib/firebase';
 import { signOut } from 'firebase/auth';
 import { motion, AnimatePresence } from 'motion/react';
+import { supabase } from '../lib/realtime';
 
 import { useStore } from '../store/useStore';
 
@@ -27,7 +28,14 @@ export function Layout({ children }: LayoutProps) {
   ];
 
   const handleLogout = async () => {
-    await signOut(auth);
+    try {
+      await signOut(auth);
+    } catch (_) {}
+    if (supabase) {
+      try {
+        await supabase.auth.signOut();
+      } catch (_) {}
+    }
     setUser(null);
     navigate('/login');
   };

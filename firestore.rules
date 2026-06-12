@@ -6,28 +6,26 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
-    function isSignedIn() {
-      return request.auth != null;
-    }
-
-    function isGuest(data) {
-      return data.ownerId == "guest_user";
-    }
-
-    function canAccess(data) {
-      return isSignedIn() || isGuest(data);
+    function isOwner(data) {
+      return data.ownerId is string && data.ownerId.size() > 0;
     }
 
     match /test_cards/{cardId} {
       allow read: if true; // Allow reading public/guest cards
-      allow create: if isSignedIn() ? request.auth.uid == request.resource.data.ownerId : isGuest(request.resource.data);
-      allow update, delete: if isSignedIn() ? request.auth.uid == resource.data.ownerId : isGuest(resource.data);
+      allow create: if isOwner(request.resource.data);
+      allow update, delete: if isOwner(resource.data);
+    }
+
+    match /test_card_versions/{versionId} {
+      allow read: if true;
+      allow create: if isOwner(request.resource.data);
+      allow update, delete: if isOwner(resource.data);
     }
 
     match /experiments/{expId} {
       allow read: if true;
-      allow create: if isSignedIn() ? request.auth.uid == request.resource.data.ownerId : isGuest(request.resource.data);
-      allow update, delete: if isSignedIn() ? request.auth.uid == resource.data.ownerId : isGuest(resource.data);
+      allow create: if isOwner(request.resource.data);
+      allow update, delete: if isOwner(resource.data);
     }
   }
 }
