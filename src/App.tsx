@@ -9,7 +9,8 @@ import { TestLab } from './pages/TestLab';
 import { Registry } from './pages/Registry';
 import { DressingRoom } from './pages/DressingRoom';
 import { History } from './pages/History';
-import { Beaker, FlaskConical, History as HistoryIcon, User, Settings as SettingsIcon, Mail, Lock, UserPlus, Info, CheckCircle2 } from 'lucide-react';
+import { Leaderboard } from './pages/Leaderboard';
+import { Beaker, FlaskConical, History as HistoryIcon, User, Settings as SettingsIcon, Mail, Lock, UserPlus, Info, CheckCircle2, Trophy } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { supabase } from './lib/realtime';
 
@@ -368,6 +369,13 @@ export default function App() {
           <ProtectedRoute>
             <Layout>
               <History />
+            </Layout>
+          </ProtectedRoute>
+        } />
+        <Route path="/benchmarks" element={
+          <ProtectedRoute>
+            <Layout>
+              <Leaderboard />
             </Layout>
           </ProtectedRoute>
         } />

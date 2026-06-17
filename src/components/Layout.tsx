@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Beaker, FlaskConical, History as HistoryIcon, User, LogOut, TestTubeDiagonal, Globe, Menu, X } from 'lucide-react';
+import { Beaker, FlaskConical, History as HistoryIcon, User, LogOut, TestTubeDiagonal, Globe, Menu, X, Trophy } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { auth } from '../lib/firebase';
 import { signOut } from 'firebase/auth';
@@ -23,6 +23,7 @@ export function Layout({ children }: LayoutProps) {
     { label: 'ARENA', path: '/', icon: Beaker },
     { label: 'TEST_LAB', path: '/lab', icon: FlaskConical },
     { label: 'REGISTRY', path: '/registry', icon: Globe },
+    { label: 'BENCHMARKS', path: '/benchmarks', icon: Trophy },
     { label: 'HISTORY', path: '/history', icon: HistoryIcon },
     { label: 'DRESSING_ROOM', path: '/profile', icon: User },
   ];

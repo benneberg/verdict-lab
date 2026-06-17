@@ -23,6 +23,7 @@ export function TestLab() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState<string | null>(null);
   const [versions, setVersions] = useState<any[]>([]);
+  const [comparingWith, setComparingWith] = useState<any | null>(null);
   
   // Form state
   const [name, setName] = useState('');
@@ -511,12 +512,20 @@ export function TestLab() {
                             <span className="text-[9px] text-slate-500">{v.createdAt?.toDate().toLocaleDateString()}</span>
                           </div>
                           <p className="text-[10px] text-slate-400 line-clamp-2 italic">"{v.data.hypothesis}"</p>
-                          <button 
-                            onClick={() => handleRevert(v.data)}
-                            className="w-full py-1.5 rounded-lg bg-slate-700 hover:bg-indigo-600 text-[10px] font-bold text-white transition-all uppercase"
-                          >
-                            Restore Configuration
-                          </button>
+                          <div className="grid grid-cols-2 gap-2">
+                            <button 
+                              onClick={() => handleRevert(v.data)}
+                              className="py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-[10px] font-bold text-white transition-all uppercase"
+                            >
+                              Restore
+                            </button>
+                            <button 
+                              onClick={() => setComparingWith(v.data)}
+                              className="py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-[10px] font-bold text-white transition-all uppercase"
+                            >
+                              Compare
+                            </button>
+                          </div>
                         </div>
                       ))}
                       {versions.length === 0 && (
@@ -589,6 +598,114 @@ export function TestLab() {
           ))}
         </AnimatePresence>
       </div>
+      {/* Comparison Modal */}
+      <AnimatePresence>
+        {comparingWith && (
+          <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-[100] flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white border border-slate-200 rounded-2xl w-full max-w-5xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col"
+            >
+              <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                <div>
+                  <div className="text-[9px] font-bold text-slate-400 uppercase tracking-widest font-mono">Protocol Auditor</div>
+                  <h3 className="text-lg font-extrabold text-slate-900 leading-tight mt-1">Comparison: Current draft vs Version Registry</h3>
+                </div>
+                <button 
+                  onClick={() => setComparingWith(null)}
+                  className="w-8 h-8 rounded-full bg-white hover:bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-500 hover:text-slate-900 transition-all"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-8 bg-slate-50/30">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
+                   {/* Left Col: Target Version */}
+                   <div className="space-y-8">
+                      <div className="flex items-center gap-2 mb-4">
+                         <div className="w-2 h-2 rounded-full bg-slate-400" />
+                         <h4 className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em]">Legacy Version Data</h4>
+                      </div>
+                      
+                      <div className="space-y-6">
+                        <div>
+                           <label className="text-[9px] font-bold text-slate-300 uppercase mb-1 block">Hypothesis</label>
+                           <p className="text-xs text-slate-500 italic opacity-60 leading-relaxed font-medium">"{comparingWith.hypothesis}"</p>
+                        </div>
+
+                        {comparingWith.variants?.map((v: any) => (
+                           <div key={v.id} className="space-y-2">
+                             <label className="text-[9px] font-bold text-slate-300 uppercase block">Variant {v.id}: {v.label}</label>
+                             <pre className="text-[10px] font-mono p-4 bg-slate-100 rounded-xl border border-slate-200 text-slate-400 whitespace-pre-wrap leading-relaxed">
+                               {v.prompt_template}
+                             </pre>
+                           </div>
+                        ))}
+                      </div>
+                   </div>
+
+                   {/* Right Col: Current Draft */}
+                   <div className="space-y-8">
+                      <div className="flex items-center gap-2 mb-4">
+                         <div className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
+                         <h4 className="text-[10px] font-black uppercase text-indigo-600 tracking-[0.2em]">Current Lab Draft</h4>
+                      </div>
+
+                      <div className="space-y-6">
+                        <div>
+                           <label className="text-[9px] font-bold text-slate-400 uppercase mb-1 block">Hypothesis</label>
+                           <p className={cn(
+                             "text-xs font-bold leading-relaxed",
+                             hypothesis !== comparingWith.hypothesis ? "text-indigo-600 italic" : "text-slate-500 italic opacity-80"
+                           )}>
+                             "{hypothesis}"
+                           </p>
+                        </div>
+
+                        {variants.map((v, i) => {
+                           const legacyV = comparingWith.variants?.[i];
+                           const isChanged = v.prompt_template !== legacyV?.prompt_template;
+                           return (
+                             <div key={v.id} className="space-y-2">
+                               <label className="text-[9px] font-bold text-slate-400 uppercase block">Variant {v.id}: {v.label}</label>
+                               <pre className={cn(
+                                 "text-[10px] font-mono p-4 rounded-xl border text-slate-900 whitespace-pre-wrap leading-relaxed shadow-sm",
+                                 isChanged ? "bg-indigo-50 border-indigo-100 text-indigo-900 ring-4 ring-indigo-500/5 translate-x-2" : "bg-white border-slate-200"
+                               )}>
+                                 {v.prompt_template}
+                               </pre>
+                             </div>
+                           );
+                        })}
+                      </div>
+                   </div>
+                </div>
+              </div>
+
+              <div className="p-6 border-t border-slate-100 bg-slate-50 flex gap-4">
+                <button 
+                  onClick={() => setComparingWith(null)}
+                  className="flex-1 py-3 rounded-xl border border-slate-200 hover:border-slate-300 text-slate-600 text-xs font-bold transition-all uppercase tracking-widest"
+                >
+                  Close Auditor
+                </button>
+                <button 
+                  onClick={() => {
+                    handleRevert(comparingWith);
+                    setComparingWith(null);
+                  }}
+                  className="flex-1 py-3 rounded-xl bg-indigo-600 hover:bg-slate-900 text-white text-xs font-extrabold transition-all shadow-lg shadow-indigo-200 uppercase tracking-widest"
+                >
+                  Overwrite Draft with This version
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
