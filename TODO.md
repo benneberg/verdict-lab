@@ -1,22 +1,21 @@
-# Project Roadmap & Audit (TODO)
+# TODO.md
 
-## 🔍 Critical Code Audit
-- **Metric Aggregation**: Current `Leaderboard` aggregates on the client. For production, this MUST be moved to a Firebase Cloud Function for performance and to satisfy security rules (users shouldn't have read access to all global experiments).
-- **Versioning Storage**: The versioning system currently saves a deep copy of the data. Implementation of a diff-based storage (e.g. JSON Patch) would be more efficient for large prompt templates.
-- **Error Boundaries**: Lack of React Error Boundaries around the Arena execution layer. Network failures in the LLM proxy could lead to stale UI states.
-- **Judge Diversity**: Currently hardcoded to use Gemini via the `/api/judge` proxy. Should be expanded to allow specific multi-model judging panels (e.g. GPT-4o vs Claude 3.5).
+## 🔍 Critical Code Audit Fixes
+- [ ] **Secure API Key Storage**: Migrate the `GEMINI_API_KEY` from a frontend build-time replacement config (`define` in `vite.config.ts`) to a secure backend Express middleware route to prevent client-side secret exposure.
+- [ ] **Server-Side Leaderboard Aggregation**: Replace client-side aggregation loops on the `experiments` collection with an asynchronous background calculation trigger (e.g. Firebase Cloud Function) to avoid browser main-thread blockage as data volume expands.
+- [ ] **Automated Testing Suite**: Configure Vitest and `@testing-library/react` and implement test specs for critical state-management flows, JDay consensus tallies, and variable highlight regexes.
+- [ ] **Error Boundaries**: Install React Error Boundaries around the Arena execution and API invocation layers to gracefully capture fetch errors and prevent whole-page crashes.
 
 ## 🚀 Near-Term Tasks (High Priority)
-- [ ] **Server-Side Aggregation**: Move leaderboard calculations to a scheduled Cloud Function.
-- [ ] **Collaborative Arenas**: Allow multiple users to join a live "Arena" session via Supabase Real-time.
-- [ ] **CSV/JSON Bulk Import**: Enable uploading large evaluation datasets into the Arena at once.
-- [ ] **Visual Diffing**: Integration of a library like `react-diff-viewer` for even clearer version comparisons in the Lab.
+- [ ] **Differentiating Variables**: Support custom types/ranges for independent variables (e.g., specific float temperatures or system roles) instead of basic strings.
+- [ ] **Visual Diff Viewer**: Integrate `react-diff-viewer` into the Test Lab version auditor to show actual inline diff highlight comparisons between current drafts and saved historical states.
+- [ ] **CSV / JSON Batch Import**: Add utility to bulk import evaluation datasets into the Arena to execute hundreds of variations at once.
 
 ## 🛠 Feature Improvements
-- [ ] **Rich Rubrics**: Add support for sliders and custom multi-choice metrics in the evaluation rubric.
-- [ ] **Prompt Linting**: Integration of a linter to detect potential hallucination triggers in the PromptEditor.
-- [ ] **Multi-Judge Majority Vote**: Update Arena to call 3+ models and return a majority-consensus verdict.
+- [ ] **Multi-Judge Diversity**: Allow the user to specify distinct panel combinations (e.g., mixture of GPT models, Claude, and Gemini) in their judge consensus dashboard rather than only Gemini.
+- [ ] **Rich Rubric Metrics**: Support non-integer grading rubrics, like sliders and checkboxes.
+- [ ] **Prompt Linting Integration**: Embed standard security and instruction-inject linters in the `PromptEditor` component.
 
 ## 🐛 Known Stubs / Mockups
-- **Supabase Real-time**: The foundation `realtime.ts` is integrated, but live collaborative editing isn't yet active in the `Arena`.
-- **Dressing Room Settings**: Profile settings for advanced LLM parameters (streaming, stop sequences) are currently UI-only stubs.
+- [ ] **Supabase Real-time Collaboration**: The foundation `realtime.ts` is integrated and loaded, but collaborative multi-user sessions/cursors are not yet fully piped into the active Lab editors.
+- [ ] **Advanced Dressing Room Parameters**: LLM configuration parameters (such as topK, topP, and custom stop sequences) are currently UI-only stubs and do not actively modify JDay API calls.
