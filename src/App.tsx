@@ -10,6 +10,7 @@ import { Registry } from './pages/Registry';
 import { DressingRoom } from './pages/DressingRoom';
 import { History } from './pages/History';
 import { Leaderboard } from './pages/Leaderboard';
+import { About } from './pages/About';
 import { Beaker, FlaskConical, History as HistoryIcon, User, Settings as SettingsIcon, Mail, Lock, UserPlus, Info, CheckCircle2, Trophy } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { supabase } from './lib/realtime';
@@ -395,6 +396,15 @@ export default function App() {
             <Layout>
               <ErrorBoundary>
                 <DressingRoom />
+              </ErrorBoundary>
+            </Layout>
+          </ProtectedRoute>
+        } />
+        <Route path="/about" element={
+          <ProtectedRoute>
+            <Layout>
+              <ErrorBoundary>
+                <About />
               </ErrorBoundary>
             </Layout>
           </ProtectedRoute>

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Beaker, FlaskConical, History as HistoryIcon, User, LogOut, TestTubeDiagonal, Globe, Menu, X, Trophy } from 'lucide-react';
+import { Beaker, FlaskConical, History as HistoryIcon, User, LogOut, TestTubeDiagonal, Globe, Menu, X, Trophy, Info, Sparkles } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { auth } from '../lib/firebase';
 import { signOut } from 'firebase/auth';
@@ -8,6 +8,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { supabase } from '../lib/realtime';
 
 import { useStore } from '../store/useStore';
+import { OnboardingTour } from './OnboardingTour';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -15,6 +16,9 @@ interface LayoutProps {
 
 export function Layout({ children }: LayoutProps) {
   const [isOpen, setIsOpen] = React.useState(false);
+  const [showTour, setShowTour] = React.useState(() => {
+    return localStorage.getItem('verdict_lab_tour_completed') !== 'true';
+  });
   const location = useLocation();
   const navigate = useNavigate();
   const { setUser } = useStore();
@@ -26,6 +30,7 @@ export function Layout({ children }: LayoutProps) {
     { label: 'BENCHMARKS', path: '/benchmarks', icon: Trophy },
     { label: 'HISTORY', path: '/history', icon: HistoryIcon },
     { label: 'DRESSING_ROOM', path: '/profile', icon: User },
+    { label: 'INFO & MANUAL', path: '/about', icon: Info },
   ];
 
   const handleLogout = async () => {
@@ -99,7 +104,17 @@ export function Layout({ children }: LayoutProps) {
           ))}
         </nav>
 
-        <div className="p-4 border-t border-slate-50">
+        <div className="p-4 border-t border-slate-50 space-y-2">
+          <button 
+            onClick={() => {
+              setShowTour(true);
+              setIsOpen(false);
+            }}
+            className="w-full flex items-center gap-3 px-3 py-2.5 text-[11px] font-bold text-indigo-600 hover:bg-indigo-50/50 hover:text-indigo-700 rounded-xl transition-all duration-200 bg-indigo-50/20 border border-indigo-100"
+          >
+            <Sparkles size={16} className="text-indigo-600" />
+            SYSTEM_QUICK_TOUR
+          </button>
           <button 
             onClick={handleLogout}
             className="w-full flex items-center gap-3 px-3 py-2.5 text-[11px] font-bold text-slate-400 hover:bg-red-50 hover:text-red-600 rounded-xl transition-all duration-200"
@@ -147,6 +162,8 @@ export function Layout({ children }: LayoutProps) {
           </AnimatePresence>
         </div>
       </main>
+      
+      <OnboardingTour isOpen={showTour} onClose={() => setShowTour(false)} />
     </div>
   );
 }
