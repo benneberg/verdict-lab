@@ -1,52 +1,59 @@
-# ARCHITECTURE.md
+# System Architecture Design 🧪
 
-## 1. Components
-- **Client SPA (React / Vite)**: Built on React 19 and Vite 6. Consists of a responsive layout wrapping pages: Arena, Test Lab, Registry, Benchmarks, History, and dressing room.
-- **Zustand State Store**: Manages global logged-in user state and cached shared collections.
-- **PromptEditor Component**: Custom modular rich-text view that parses variable strings (`{variable_name}`) dynamically and layers them inside an absolutely positioned highlighting viewport.
-- **Judge Day (JDay) Service**: Client-side async coordinator that triggers parallel calls across selected models and outputs synthesized average scores.
+Verdict Lab is a secure, full-stack, distributed application engineered for prompt evaluation and model consensus. It isolates private keys, performs high-concurrency judge scoring, and ensures real-time feedback with minimum main-thread impact.
 
-## 2. Data Flow (Source of Truth)
-- **Primary Database**: Firebase Firestore is the absolute source of truth.
-  - Active draft updates are committed to the `test_cards` collection.
-  - Immutable historical states are written to the `test_card_versions` collection.
-  - Evaluation results, along with metrics and judge output logs, are written to `experiments`.
-- **Real-Time Notification Pipe**: Supabase Broadcast Channels are used as a sidecar transaction notifications publisher. When an experiment is complete, a lightweight broadcast payload is pushed to all subscribed clients.
+---
 
+## 1. Core Component Mapping
+
+- **Client SPA (React + Vite)**: Configured with React 19 and Vite 6. Serves the responsive multi-view workbench dashboard: Arena, Test Lab, Registry, Benchmarks, History, and Dressing Room.
+- **Zustand State Store**: Coordinates reactive client state, user authentication properties, and cached blueprinted templates.
+- **PromptEditor Component**: Custom modular input deck that supports real-time syntax highlighting for variables (e.g. `{idea}`), line counters, and prompt linting.
+- **Secure Backend API Gateway (Express / Node.js)**: Runs server-side on Port 3000. It proxies all Gemini model inferences and consensus checks, keeping secrets invisible to the user agent.
+- **JDay Consensus Engine**: Orchestrates parallel model inference requests across selected model raters (Gemini 3.1 Pro, Gemini 3.5 Flash, Gemini 2.5 Flash), compiles the score matrices, checks for position biases, and synthesizes consensus ratios.
+
+---
+
+## 2. Secure Data Flow (Source of Truth)
+
+- **Primary Database**: Firebase Firestore acts as the persistence layer:
+  - `test_cards`: Draft and configuration states for active templates.
+  - `test_card_versions`: Immutable, chronological records of saved template versions.
+  - `experiments`: Detailed logs of individual runs containing inputs, outputs, consensus verdicts, and inter-rater reliability.
+- **Real-Time Notification Channel**: Supabase Broadcast Channels publish real-time signals. When an experiment finishes, a thin transactional event payload is published to keep concurrent browser tabs synchronized.
+
+### Transaction Path Flow Diagram:
 ```text
-[User Action: Run] ──> [Vite UI / Arena]
-                           │
-                           ├──> [Gemini AI API] (Multi-Judge Generation)
-                           │         │
-                           │         ▼ (Evaluation Metrics JSON)
-                           ├──> [Firestore: "experiments"] (Commit Source of Truth)
-                           │
-                           └──> [Supabase Broadcast] ──> [Subscribed Clients]
+[Browser: User Run Action] ──> [Express Endpoint: /api/evaluate]
+                                       │
+                                       ├──> [Gemini Server SDK] (Private Keys Hidden)
+                                       │          │
+                                       │          ▼ (Consensus Result JSON)
+                                       ├──> [Firestore: "experiments"] (Written Server-Side)
+                                       │
+                                       └──> [Supabase Broadcast] ──> [Synchronized UI Tabs]
 ```
 
-## 3. Integrations
-- **Google Gen AI (Gemini)**: Interacts with Gemini models (`gemini-1.5-pro-preview-0514`, `gemini-1.5-flash-preview-0514`, `gemini-3-flash-preview`) to perform prompt inference and rubric evaluation.
-- **Supabase Real-time**: Connects as an anonymous broadcast network to alert sessions of completed runs.
+---
 
-## 4. Deployment Model
-- Containerized Cloud Run instance served on port 3000 behind an Nginx reverse proxy. Static files are generated via `vite build` and served to clients.
+## 3. Integrations & API Safety
 
-## 5. Observability
-- Observability is presently limited to standard runtime debug console statements (`console.log`, `console.warn`, `console.error`) capturing API anomalies and execution failures.
+- **Google Gen AI Server SDK (`@google/genai`)**: Configured strictly server-side inside `server.ts`. Calls the official models with structured JSON schemas for rater voting alignment.
+- **Supabase Real-time sidecar**: Functions as an anonymous broadcast network to alert concurrent sessions of complete experiment cycles.
 
-## 6. Risks & Security
-- **Insecure Key Exposition**: Placing `GEMINI_API_KEY` inside `vite.config.ts`'s `define` results in the private key being printed into client-side build files. Anyone can inspect network resources or compiled script bundles to steal this credential.
-- **Client Thread Starvation**: The leaderboard calculates averages on the client thread by loading all public documents, which will degrade in performance as document volume climbs.
+---
 
-## 7. Recommended Improvements
-- Introduce an Express API gateway to proxy model inferences and evaluations. This keeps `GEMINI_API_KEY` fully server-side.
-- Move performance aggregations to a scheduled Firebase Cloud Function that computes statistics once every hour and saves the result in a standalone `leaderboard_cache` Firestore collection.
+## 4. Deployment & Build Architecture
 
-## 8. Section Confidence Levels
-- **Components**: High
-- **Data Flow**: High
-- **Integrations**: High
-- **Deployment Model**: High
-- **Observability**: High
-- **Risks & Security**: High
-- **Recommended Improvements**: High
+- **Production Bundle Pipeline**: 
+  - The client React SPA compiles to static assets inside `dist/`.
+  - The custom Node Express server compiles via `esbuild` to a single, self-contained, CommonJS file (`dist/server.cjs`). This bypasses any runtime Node relative ESM imports issues and ensures super-fast cold starts.
+- **Runtime Environment**: Executed as a secure containerized Cloud Run service listening exclusively on **Port 3000** behind the platform Nginx gateway.
+
+---
+
+## 5. Risk Mitigation & Audit Ledger
+
+- **Mitigated Key Exposition**: `GEMINI_API_KEY` has been completely removed from frontend build targets and moved to backend-only memory.
+- **Mitigated Thread Starvation**: High-complexity aggregation computations (such as model win rates, average scores, and confidence) are performed off the browser main-thread on the Express `/api/leaderboard` route.
+- **Fault Recovery**: Critical rendering screens and network invocation pipelines are guarded by a robust custom React Error Boundary layout to capture fetch errors without page crashes.

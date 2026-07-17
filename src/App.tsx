@@ -13,6 +13,7 @@ import { Leaderboard } from './pages/Leaderboard';
 import { Beaker, FlaskConical, History as HistoryIcon, User, Settings as SettingsIcon, Mail, Lock, UserPlus, Info, CheckCircle2, Trophy } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { supabase } from './lib/realtime';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, isInitializing } = useStore();
@@ -347,42 +348,54 @@ export default function App() {
         <Route path="/" element={
           <ProtectedRoute>
             <Layout>
-              <Arena />
+              <ErrorBoundary>
+                <Arena />
+              </ErrorBoundary>
             </Layout>
           </ProtectedRoute>
         } />
         <Route path="/lab" element={
           <ProtectedRoute>
             <Layout>
-              <TestLab />
+              <ErrorBoundary>
+                <TestLab />
+              </ErrorBoundary>
             </Layout>
           </ProtectedRoute>
         } />
         <Route path="/registry" element={
           <ProtectedRoute>
             <Layout>
-              <Registry />
+              <ErrorBoundary>
+                <Registry />
+              </ErrorBoundary>
             </Layout>
           </ProtectedRoute>
         } />
         <Route path="/history" element={
           <ProtectedRoute>
             <Layout>
-              <History />
+              <ErrorBoundary>
+                <History />
+              </ErrorBoundary>
             </Layout>
           </ProtectedRoute>
         } />
         <Route path="/benchmarks" element={
           <ProtectedRoute>
             <Layout>
-              <Leaderboard />
+              <ErrorBoundary>
+                <Leaderboard />
+              </ErrorBoundary>
             </Layout>
           </ProtectedRoute>
         } />
         <Route path="/profile" element={
           <ProtectedRoute>
             <Layout>
-              <DressingRoom />
+              <ErrorBoundary>
+                <DressingRoom />
+              </ErrorBoundary>
             </Layout>
           </ProtectedRoute>
         } />

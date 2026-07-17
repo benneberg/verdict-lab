@@ -15,6 +15,64 @@ interface RubricMetric {
   weight: number;
 }
 
+function DiffLines({ legacy, current }: { legacy: string; current: string }) {
+  const legacyLines = (legacy || "").split('\n');
+  const currentLines = (current || "").split('\n');
+  
+  const diffs = [];
+  let i = 0;
+  let j = 0;
+  
+  while (i < legacyLines.length || j < currentLines.length) {
+    const lLine = legacyLines[i];
+    const cLine = currentLines[j];
+    
+    if (lLine === cLine) {
+      diffs.push({ type: 'unchanged', text: lLine, lineNum: i + 1 });
+      i++;
+      j++;
+    } else {
+      if (lLine !== undefined && (cLine === undefined || !currentLines.slice(j).includes(lLine))) {
+        diffs.push({ type: 'removed', text: lLine, lineNum: i + 1 });
+        i++;
+      } else if (cLine !== undefined && (lLine === undefined || !legacyLines.slice(i).includes(cLine))) {
+        diffs.push({ type: 'added', text: cLine, lineNum: j + 1 });
+        j++;
+      } else {
+        diffs.push({ type: 'removed', text: lLine, lineNum: i + 1 });
+        diffs.push({ type: 'added', text: cLine, lineNum: j + 1 });
+        i++;
+        j++;
+      }
+    }
+  }
+
+  return (
+    <div className="font-mono text-[10px] leading-relaxed border border-slate-200 rounded-xl overflow-hidden bg-slate-950 text-slate-100 shadow-inner w-full">
+      <div className="bg-slate-900 border-b border-slate-800 px-4 py-2 text-[9px] font-black uppercase text-slate-500 tracking-wider">
+        Interactive Line-by-Line Code Diff
+      </div>
+      <div className="p-4 max-h-[350px] overflow-y-auto custom-scrollbar space-y-0.5">
+        {diffs.map((d, idx) => (
+          <div 
+            key={idx} 
+            className={cn(
+              "flex gap-4 px-2 py-0.5 font-mono",
+              d.type === 'added' ? "bg-emerald-950/70 text-emerald-400 border-l-4 border-emerald-500" :
+              d.type === 'removed' ? "bg-rose-950/70 text-rose-400 border-l-4 border-rose-500 line-through" :
+              "text-slate-400 opacity-80"
+            )}
+          >
+            <span className="w-8 select-none text-slate-600 text-right">{d.lineNum}</span>
+            <span className="select-none w-3 text-center">{d.type === 'added' ? '+' : d.type === 'removed' ? '-' : ' '}</span>
+            <span className="whitespace-pre-wrap break-all">{d.text}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function TestLab() {
   const { user } = useStore();
   const [testCards, setTestCards] = useState<any[]>([]);
@@ -386,6 +444,13 @@ export function TestLab() {
                           <option key={v} value={v}>{v.toUpperCase()}</option>
                         ))}
                       </select>
+                      <div className="mt-2 text-[9px] text-indigo-600 font-bold leading-relaxed uppercase tracking-widest bg-indigo-50 border border-indigo-100/60 p-1.5 rounded-lg">
+                        {independentVar === 'parameter' && "⚡ Custom Parameters: Temperature range [0.0 - 1.0], top_p, top_k, max_tokens."}
+                        {independentVar === 'model' && "🧠 Contender Models: gemini-3.5-flash vs gemini-3.1-pro-preview."}
+                        {independentVar === 'role' && "👤 Personas: Specific float temperature system behaviors and instruction sets."}
+                        {independentVar === 'reasoning_strategy' && "🔍 Reasoning Levels: Low (low latency) vs High (high analytical logic)."}
+                        {independentVar === 'prompt' && "✍️ Template Variations: Structured variants of instruction formatting."}
+                      </div>
                     </div>
                     <div>
                       <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Input Placeholders</label>
@@ -622,66 +687,56 @@ export function TestLab() {
               </div>
 
               <div className="flex-1 overflow-y-auto p-8 bg-slate-50/30">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
-                   {/* Left Col: Target Version */}
-                   <div className="space-y-8">
-                      <div className="flex items-center gap-2 mb-4">
-                         <div className="w-2 h-2 rounded-full bg-slate-400" />
-                         <h4 className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em]">Legacy Version Data</h4>
-                      </div>
-                      
-                      <div className="space-y-6">
-                        <div>
-                           <label className="text-[9px] font-bold text-slate-300 uppercase mb-1 block">Hypothesis</label>
-                           <p className="text-xs text-slate-500 italic opacity-60 leading-relaxed font-medium">"{comparingWith.hypothesis}"</p>
+                <div className="space-y-8">
+                  {/* Metadata Row */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div className="p-4 rounded-xl bg-slate-50 border border-slate-200">
+                      <div className="text-[9px] font-bold text-slate-400 uppercase tracking-widest font-mono mb-1">Legacy Hypothesis</div>
+                      <p className="text-xs text-slate-500 italic leading-relaxed font-medium">"{comparingWith.hypothesis}"</p>
+                    </div>
+                    <div className={cn(
+                      "p-4 rounded-xl border",
+                      hypothesis !== comparingWith.hypothesis ? "bg-indigo-50/50 border-indigo-100 text-indigo-950" : "bg-slate-50 border-slate-200"
+                    )}>
+                      <div className="text-[9px] font-bold text-slate-400 uppercase tracking-widest font-mono mb-1">Current Draft Hypothesis</div>
+                      <p className={cn(
+                        "text-xs leading-relaxed font-medium",
+                        hypothesis !== comparingWith.hypothesis ? "font-bold text-indigo-700" : "text-slate-500 italic"
+                      )}>
+                        "{hypothesis}"
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Code Diff Row */}
+                  <div className="space-y-6">
+                    <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 border-b border-slate-100 pb-2 flex items-center gap-2">
+                      <Code size={12} /> Prompt Template Line-by-Line Code Diff
+                    </div>
+                    {variants.map((v, i) => {
+                      const legacyV = comparingWith.variants?.find((lv: any) => lv.id === v.id) || comparingWith.variants?.[i];
+                      const isChanged = v.prompt_template !== legacyV?.prompt_template;
+                      return (
+                        <div key={v.id} className="space-y-2">
+                          <div className="flex justify-between items-center">
+                            <span className="text-[10px] font-extrabold uppercase text-slate-700 tracking-wider">
+                              Variant {v.id}: {v.label} Comparison
+                            </span>
+                            {isChanged ? (
+                              <span className="px-2 py-0.5 bg-indigo-100 border border-indigo-200 rounded text-[9px] font-black text-indigo-700 uppercase tracking-widest">
+                                MODIFIED
+                              </span>
+                            ) : (
+                              <span className="px-2 py-0.5 bg-slate-100 border border-slate-200 rounded text-[9px] font-black text-slate-400 uppercase tracking-widest">
+                                UNCHANGED
+                              </span>
+                            )}
+                          </div>
+                          <DiffLines legacy={legacyV?.prompt_template || ""} current={v.prompt_template} />
                         </div>
-
-                        {comparingWith.variants?.map((v: any) => (
-                           <div key={v.id} className="space-y-2">
-                             <label className="text-[9px] font-bold text-slate-300 uppercase block">Variant {v.id}: {v.label}</label>
-                             <pre className="text-[10px] font-mono p-4 bg-slate-100 rounded-xl border border-slate-200 text-slate-400 whitespace-pre-wrap leading-relaxed">
-                               {v.prompt_template}
-                             </pre>
-                           </div>
-                        ))}
-                      </div>
-                   </div>
-
-                   {/* Right Col: Current Draft */}
-                   <div className="space-y-8">
-                      <div className="flex items-center gap-2 mb-4">
-                         <div className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
-                         <h4 className="text-[10px] font-black uppercase text-indigo-600 tracking-[0.2em]">Current Lab Draft</h4>
-                      </div>
-
-                      <div className="space-y-6">
-                        <div>
-                           <label className="text-[9px] font-bold text-slate-400 uppercase mb-1 block">Hypothesis</label>
-                           <p className={cn(
-                             "text-xs font-bold leading-relaxed",
-                             hypothesis !== comparingWith.hypothesis ? "text-indigo-600 italic" : "text-slate-500 italic opacity-80"
-                           )}>
-                             "{hypothesis}"
-                           </p>
-                        </div>
-
-                        {variants.map((v, i) => {
-                           const legacyV = comparingWith.variants?.[i];
-                           const isChanged = v.prompt_template !== legacyV?.prompt_template;
-                           return (
-                             <div key={v.id} className="space-y-2">
-                               <label className="text-[9px] font-bold text-slate-400 uppercase block">Variant {v.id}: {v.label}</label>
-                               <pre className={cn(
-                                 "text-[10px] font-mono p-4 rounded-xl border text-slate-900 whitespace-pre-wrap leading-relaxed shadow-sm",
-                                 isChanged ? "bg-indigo-50 border-indigo-100 text-indigo-900 ring-4 ring-indigo-500/5 translate-x-2" : "bg-white border-slate-200"
-                               )}>
-                                 {v.prompt_template}
-                               </pre>
-                             </div>
-                           );
-                        })}
-                      </div>
-                   </div>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
 
