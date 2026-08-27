@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { collection, addDoc, onSnapshot, query, where, orderBy, deleteDoc, doc, serverTimestamp, updateDoc, getDocs, limit } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { db, auth } from '../lib/firebase';
 import { useStore } from '../store/useStore';
 import { Plus, Trash2, Save, X, FlaskConical, Quote, Share2, History, ChevronUp, ChevronDown, GripVertical, Library, CheckCircle2, Edit3, Code } from 'lucide-react';
 import { cn } from '../lib/utils';
@@ -101,25 +101,55 @@ export function TestLab() {
 
   useEffect(() => {
     if (!user) return;
-    const q = query(collection(db, 'test_cards'), where('ownerId', '==', user.id), orderBy('createdAt', 'desc'));
-    return onSnapshot(q, (snapshot) => {
-      setTestCards(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
-    });
+    let unsub = () => {};
+
+    if (auth.currentUser && auth.currentUser.uid === user.id) {
+      const q = query(collection(db, 'test_cards'), where('ownerId', '==', user.id), orderBy('createdAt', 'desc'));
+      unsub = onSnapshot(
+        q, 
+        (snapshot) => {
+          const cards = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+          if (cards.length > 0) {
+            setTestCards(cards);
+          } else {
+            setTestCards(TEMPLATES as any);
+          }
+        },
+        (err) => {
+          console.warn('Firestore test_cards listener fallback:', err.message);
+          setTestCards(TEMPLATES as any);
+        }
+      );
+    } else {
+      setTestCards(TEMPLATES as any);
+    }
+    return unsub;
   }, [user]);
 
   useEffect(() => {
-    if (showHistory) {
+    if (!showHistory || !user) return;
+    let unsub = () => {};
+
+    if (auth.currentUser && auth.currentUser.uid === user.id) {
       const q = query(
         collection(db, 'test_card_versions'), 
         where('testCardId', '==', showHistory),
+        where('ownerId', '==', user.id),
         orderBy('version', 'desc')
       );
-      const unsub = onSnapshot(q, (snap) => {
-        setVersions(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-      });
-      return unsub;
+      unsub = onSnapshot(
+        q, 
+        (snap) => {
+          setVersions(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+        },
+        (err) => {
+          console.warn('Firestore test_card_versions listener fallback:', err.message);
+          setVersions([]);
+        }
+      );
     }
-  }, [showHistory]);
+    return unsub;
+  }, [showHistory, user]);
 
   const handleSave = async () => {
     if (!name || !hypothesis) return;

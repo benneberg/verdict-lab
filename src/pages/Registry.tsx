@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { collection, query, where, onSnapshot, addDoc, updateDoc, doc, serverTimestamp } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { db, auth } from '../lib/firebase';
 import { useStore } from '../store/useStore';
+import { TEMPLATES } from '../data/templates';
 import { Search, Globe, Download, User, Info, CheckCircle2, Eye, Flame, Award, Cpu, X, BookOpen } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
@@ -19,9 +20,31 @@ export function Registry() {
       collection(db, 'test_cards'), 
       where('isPublic', '==', true)
     );
-    return onSnapshot(q, (snapshot) => {
-      setCards(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
-    });
+
+    const defaultTemplates = TEMPLATES.map(t => ({
+      ...t,
+      isPublic: true,
+      downloads: 124,
+      authorName: 'Verdict Core Research'
+    }));
+
+    return onSnapshot(
+      q, 
+      (snapshot) => {
+        const fetched = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+        const combined: any[] = [...defaultTemplates];
+        fetched.forEach(f => {
+          if (!combined.some(c => c.id === f.id)) {
+            combined.push(f);
+          }
+        });
+        setCards(combined);
+      },
+      (error) => {
+        console.warn('Firestore registry query error, using curated library templates:', error.message);
+        setCards(defaultTemplates);
+      }
+    );
   }, []);
 
   const handleImport = async (card: any) => {
@@ -29,23 +52,25 @@ export function Registry() {
     try {
       const { id, ownerId, createdAt, downloads, ...rest } = card;
       
-      // Save deep copy to active user's cards
-      await addDoc(collection(db, 'test_cards'), {
-        ...rest,
-        ownerId: user.id,
-        parentCardId: id,
-        createdAt: serverTimestamp(),
-        version: 1,
-        isPublic: false
-      });
-
-      // Update downloads count in source document for real-time popularity
-      try {
-        await updateDoc(doc(db, 'test_cards', id), {
-          downloads: (downloads || 0) + 1
+      if (auth.currentUser && auth.currentUser.uid === user.id) {
+        // Save deep copy to active user's cards in Firestore
+        await addDoc(collection(db, 'test_cards'), {
+          ...rest,
+          ownerId: user.id,
+          parentCardId: id,
+          createdAt: serverTimestamp(),
+          version: 1,
+          isPublic: false
         });
-      } catch (err) {
-        console.warn('Could not increment downloads (likely security rules/ownership limit)', err);
+
+        // Update downloads count in source document for real-time popularity if public
+        try {
+          await updateDoc(doc(db, 'test_cards', id), {
+            downloads: (downloads || 0) + 1
+          });
+        } catch (err) {
+          console.warn('Could not increment downloads (likely security rules/ownership limit)', err);
+        }
       }
 
       setImportedIds(prev => [...prev, id]);

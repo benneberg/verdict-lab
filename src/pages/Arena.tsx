@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { collection, addDoc, onSnapshot, query, where, orderBy, serverTimestamp } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { db, auth } from '../lib/firebase';
 import { useStore } from '../store/useStore';
 import { evaluateResponses, runInference } from '../services/geminiService';
+import { TEMPLATES } from '../data/templates';
 import { Play, Loader2, CheckCircle2, ChevronRight, FlaskConical, AlertTriangle, Radio, Bell } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { cn } from '../lib/utils';
@@ -63,10 +64,28 @@ export function Arena() {
 
   useEffect(() => {
     if (!user) return;
-    const q = query(collection(db, 'test_cards'), where('ownerId', '==', user.id), orderBy('createdAt', 'desc'));
-    const unsubFirestore = onSnapshot(q, (snapshot) => {
-      setTestCards(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as TestCard)));
-    });
+    let unsubFirestore = () => {};
+
+    if (auth.currentUser && auth.currentUser.uid === user.id) {
+      const q = query(collection(db, 'test_cards'), where('ownerId', '==', user.id), orderBy('createdAt', 'desc'));
+      unsubFirestore = onSnapshot(
+        q, 
+        (snapshot) => {
+          const cards = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as TestCard));
+          if (cards.length > 0) {
+            setTestCards(cards);
+          } else {
+            setTestCards(TEMPLATES as any);
+          }
+        },
+        (error) => {
+          console.warn('Firestore test_cards snapshot permission fallback:', error.message);
+          setTestCards(TEMPLATES as any);
+        }
+      );
+    } else {
+      setTestCards(TEMPLATES as any);
+    }
 
     // Supabase Real-time Subscription
     const unsubRealtime = subscribeToExperimentUpdates(user.id, (data) => {
@@ -116,15 +135,21 @@ export function Arena() {
       
       setVerdict(evaluation);
 
-      await addDoc(collection(db, 'experiments'), {
-        testCardId: selectedCard.id,
-        input: inputs,
-        results: results,
-        verdict: evaluation,
-        ownerId: user?.id,
-        createdAt: serverTimestamp(),
-        judges: selectedJudges
-      });
+      if (auth.currentUser && user?.id === auth.currentUser.uid) {
+        try {
+          await addDoc(collection(db, 'experiments'), {
+            testCardId: selectedCard.id,
+            input: inputs,
+            results: results,
+            verdict: evaluation,
+            ownerId: user?.id,
+            createdAt: serverTimestamp(),
+            judges: selectedJudges
+          });
+        } catch (dbErr) {
+          console.warn('Could not persist experiment to Firestore:', dbErr);
+        }
+      }
 
       // Broadcast update via Supabase if possible
       if (user) {
@@ -198,15 +223,21 @@ export function Arena() {
         resultsAccumulator.push(record);
         setBatchResults([...resultsAccumulator]);
 
-        await addDoc(collection(db, 'experiments'), {
-          testCardId: selectedCard.id,
-          input: rowInputs,
-          results: outputsMap,
-          verdict: evaluation,
-          ownerId: user?.id,
-          createdAt: serverTimestamp(),
-          judges: selectedJudges
-        });
+        if (auth.currentUser && user?.id === auth.currentUser.uid) {
+          try {
+            await addDoc(collection(db, 'experiments'), {
+              testCardId: selectedCard.id,
+              input: rowInputs,
+              results: outputsMap,
+              verdict: evaluation,
+              ownerId: user?.id,
+              createdAt: serverTimestamp(),
+              judges: selectedJudges
+            });
+          } catch (dbErr) {
+            console.warn('Could not persist batch experiment to Firestore:', dbErr);
+          }
+        }
       }
 
       setStep('COMPLETED');

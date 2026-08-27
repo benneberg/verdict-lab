@@ -24,8 +24,8 @@ service cloud.firestore {
     }
 
     match /test_card_versions/{versionId} {
-      // Allow read if user is the version owner
-      allow read: if isAuthenticated() && (resource.data.ownerId == request.auth.uid || resource.data.isPublic == true);
+      // Allow read if the card version is public or if the requester is the authenticated owner
+      allow read: if resource.data.isPublic == true || (isAuthenticated() && resource.data.ownerId == request.auth.uid);
       allow create: if isAuthenticated() && request.resource.data.ownerId == request.auth.uid;
       allow update, delete: if isAuthenticated() && resource.data.ownerId == request.auth.uid;
     }

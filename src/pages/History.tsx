@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { collection, onSnapshot, query, where, orderBy, deleteDoc, doc } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { db, auth } from '../lib/firebase';
 import { useStore } from '../store/useStore';
+import { TEMPLATES } from '../data/templates';
 import { History as HistoryIcon, Trash2, ChevronRight, CheckCircle2, FlaskConical, Download } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
@@ -25,17 +26,40 @@ export function History() {
 
   useEffect(() => {
     if (!user) return;
-    const q1 = query(collection(db, 'experiments'), where('ownerId', '==', user.id), orderBy('createdAt', 'desc'));
-    const unsubExp = onSnapshot(q1, (snapshot) => {
-      const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-      setExperiments(data);
-      if (data.length > 0 && !selectedExp) setSelectedExp(data[0]);
-    });
+    let unsubExp = () => {};
+    let unsubCards = () => {};
 
-    const q2 = query(collection(db, 'test_cards'), where('ownerId', '==', user.id));
-    const unsubCards = onSnapshot(q2, (snapshot) => {
-      setTestCards(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
-    });
+    if (auth.currentUser && auth.currentUser.uid === user.id) {
+      const q1 = query(collection(db, 'experiments'), where('ownerId', '==', user.id), orderBy('createdAt', 'desc'));
+      unsubExp = onSnapshot(
+        q1, 
+        (snapshot) => {
+          const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+          setExperiments(data);
+          if (data.length > 0 && !selectedExp) setSelectedExp(data[0]);
+        },
+        (err) => {
+          console.warn('Firestore experiments query fallback:', err.message);
+          setExperiments([]);
+        }
+      );
+
+      const q2 = query(collection(db, 'test_cards'), where('ownerId', '==', user.id));
+      unsubCards = onSnapshot(
+        q2, 
+        (snapshot) => {
+          const cards = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+          setTestCards(cards.length > 0 ? cards : (TEMPLATES as any));
+        },
+        (err) => {
+          console.warn('Firestore test_cards query fallback:', err.message);
+          setTestCards(TEMPLATES as any);
+        }
+      );
+    } else {
+      setExperiments([]);
+      setTestCards(TEMPLATES as any);
+    }
 
     return () => {
       unsubExp();
