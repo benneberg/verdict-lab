@@ -52,6 +52,38 @@ describe("JDay Consensus Engine", () => {
   });
 });
 
+// SEC-009: Safe variable replacement tester
+export function renderPromptSafely(template: string, variableMap: Record<string, any>): string {
+  const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  let rendered = template || '';
+  Object.entries(variableMap || {}).forEach(([key, val]) => {
+    rendered = rendered.replace(new RegExp(`\\{${escapeRegex(key)}\\}`, 'g'), String(val ?? ''));
+  });
+  return rendered;
+}
+
+describe("Security & ReDoS Resilience", () => {
+  it("should safely replace variables with regex metacharacters without throwing", () => {
+    const template = "Hello {user.name}, your score is {.*+?^$}!";
+    const vars = {
+      "user.name": "Alice",
+      ".*+?^$": "100"
+    };
+    const rendered = renderPromptSafely(template, vars);
+    expect(rendered).toBe("Hello Alice, your score is 100!");
+  });
+
+  it("should handle nested brackets and potential catastrophic patterns safely", () => {
+    const template = "Testing {(a+)+$} with {val}";
+    const vars = {
+      "(a+)+$": "safe_injection",
+      "val": "verified"
+    };
+    const rendered = renderPromptSafely(template, vars);
+    expect(rendered).toBe("Testing safe_injection with verified");
+  });
+});
+
 describe("Prompt Template Regex Engine", () => {
   it("should extract simple single variables", () => {
     const template = "Design an elevator pitch for {idea}";

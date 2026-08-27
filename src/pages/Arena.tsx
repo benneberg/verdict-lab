@@ -20,6 +20,19 @@ interface TestCard {
   input_schema: Record<string, any>;
 }
 
+// SEC-009: Escape regex metacharacters in user variables to prevent ReDoS
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function renderPromptTemplate(template: string, variableMap: Record<string, any>): string {
+  let rendered = template || '';
+  Object.entries(variableMap || {}).forEach(([key, val]) => {
+    rendered = rendered.replace(new RegExp(`\\{${escapeRegex(key)}\\}`, 'g'), String(val ?? ''));
+  });
+  return rendered;
+}
+
 export function Arena() {
   const { user } = useStore();
   const [testCards, setTestCards] = useState<TestCard[]>([]);
@@ -85,10 +98,7 @@ export function Arena() {
       const results: Record<string, string> = {};
       
       for (const variant of selectedCard.variants) {
-        let renderedPrompt = variant.prompt_template;
-        Object.entries(inputs).forEach(([key, val]) => {
-          renderedPrompt = renderedPrompt.replace(new RegExp(`{${key}}`, 'g'), val);
-        });
+        const renderedPrompt = renderPromptTemplate(variant.prompt_template, inputs);
         
         const response = await runInference(renderedPrompt);
         results[variant.id] = response;
@@ -165,10 +175,7 @@ export function Arena() {
         
         const outputsMap: Record<string, string> = {};
         for (const variant of selectedCard.variants) {
-          let renderedPrompt = variant.prompt_template;
-          Object.entries(rowInputs).forEach(([key, val]) => {
-            renderedPrompt = renderedPrompt.replace(new RegExp(`{${key}}`, 'g'), String(val));
-          });
+          const renderedPrompt = renderPromptTemplate(variant.prompt_template, rowInputs);
           
           const response = await runInference(renderedPrompt);
           outputsMap[variant.id] = response;

@@ -1,3 +1,5 @@
+import { auth } from '../lib/firebase';
+
 export interface RubricMetric {
   max: number;
   weight: number;
@@ -21,6 +23,24 @@ export interface EvaluationResult {
   judges?: string[];
 }
 
+async function getAuthHeaders(): Promise<Record<string, string>> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  try {
+    const token = await auth.currentUser?.getIdToken();
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+    if (auth.currentUser?.uid) {
+      headers["X-User-Id"] = auth.currentUser.uid;
+    }
+  } catch (err) {
+    console.warn("Could not retrieve auth token for request headers:", err);
+  }
+  return headers;
+}
+
 export async function evaluateResponses(
   variantA: string,
   variantB: string,
@@ -29,11 +49,10 @@ export async function evaluateResponses(
   models: string[] = ["gemini-3.5-flash"]
 ): Promise<EvaluationResult> {
   try {
+    const headers = await getAuthHeaders();
     const response = await fetch("/api/evaluate", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers,
       body: JSON.stringify({
         variantA,
         variantB,
@@ -61,11 +80,10 @@ export async function runInference(
   config?: any
 ): Promise<string> {
   try {
+    const headers = await getAuthHeaders();
     const response = await fetch("/api/inference", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers,
       body: JSON.stringify({
         prompt,
         systemInstruction,

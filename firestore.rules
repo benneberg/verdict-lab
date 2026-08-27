@@ -6,26 +6,36 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
-    function isOwner(data) {
-      return data.ownerId is string && data.ownerId.size() > 0;
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
     }
 
     match /test_cards/{cardId} {
-      allow read: if true; // Allow reading public/guest cards
-      allow create: if isOwner(request.resource.data);
-      allow update, delete: if isOwner(resource.data);
+      // Allow reading if the card is public or if the requester is the authenticated owner
+      allow read: if resource.data.isPublic == true || (isAuthenticated() && resource.data.ownerId == request.auth.uid);
+      // Allow creating only if authenticated and ownerId matches caller's UID
+      allow create: if isAuthenticated() && request.resource.data.ownerId == request.auth.uid;
+      // Allow updating and deleting only by the authenticated document owner
+      allow update, delete: if isAuthenticated() && resource.data.ownerId == request.auth.uid;
     }
 
     match /test_card_versions/{versionId} {
-      allow read: if true;
-      allow create: if isOwner(request.resource.data);
-      allow update, delete: if isOwner(resource.data);
+      // Allow read if user is the version owner
+      allow read: if isAuthenticated() && (resource.data.ownerId == request.auth.uid || resource.data.isPublic == true);
+      allow create: if isAuthenticated() && request.resource.data.ownerId == request.auth.uid;
+      allow update, delete: if isAuthenticated() && resource.data.ownerId == request.auth.uid;
     }
 
     match /experiments/{expId} {
-      allow read: if true;
-      allow create: if isOwner(request.resource.data);
-      allow update, delete: if isOwner(resource.data);
+      // Experiments contain evaluation runs, restricted strictly to the authenticated owner
+      allow read: if isAuthenticated() && resource.data.ownerId == request.auth.uid;
+      allow create: if isAuthenticated() && request.resource.data.ownerId == request.auth.uid;
+      allow update, delete: if isAuthenticated() && resource.data.ownerId == request.auth.uid;
     }
   }
 }
+

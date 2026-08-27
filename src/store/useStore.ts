@@ -26,6 +26,8 @@ export const useStore = create<AppState>()(
     }),
     {
       name: 'verdict-lab-storage',
+      // SEC-011: Avoid persisting sensitive user profiles in localStorage; state is managed dynamically by Firebase Auth
+      partialize: () => ({}),
     }
   )
 );

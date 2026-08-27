@@ -1,6 +1,15 @@
 import React, { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, Link, useLocation, useNavigate } from 'react-router-dom';
-import { onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/auth';
+import { 
+  onAuthStateChanged, 
+  signInWithPopup, 
+  GoogleAuthProvider, 
+  signInWithEmailAndPassword, 
+  createUserWithEmailAndPassword, 
+  signInAnonymously,
+  updateProfile,
+  signOut 
+} from 'firebase/auth';
 import { auth } from './lib/firebase';
 import { useStore } from './store/useStore';
 import { Layout } from './components/Layout';
@@ -57,16 +66,19 @@ function Login() {
 
   const handleGoogleLogin = async () => {
     setError(null);
+    setLoading(true);
     const provider = new GoogleAuthProvider();
     try {
       await signInWithPopup(auth, provider);
     } catch (error: any) {
       console.error('Google login failed:', error);
       setError(error.message || 'Google Auth linkage failed.');
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleSupabaseAuth = async (e: React.FormEvent) => {
+  const handleAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setSuccess(null);
@@ -81,65 +93,84 @@ function Login() {
       return;
     }
 
-    if (!supabase) {
-      setError('Supabase connection string is missing. Please define VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your Settings menu to activate credentials, or bypass using Guest Mode below.');
-      return;
-    }
-
     setLoading(true);
 
     try {
       if (isSignUp) {
-        const { data, error: signUpError } = await supabase.auth.signUp({
-          email,
-          password,
-          options: {
-            data: {
-              displayName: displayName
-            }
-          }
-        });
-
-        if (signUpError) {
-          setError(signUpError.message);
-        } else {
-          setSuccess('Account created successfully! You can now log in.');
-          setIsSignUp(false);
-          setPassword('');
+        // Create user with Firebase Auth
+        const cred = await createUserWithEmailAndPassword(auth, email, password);
+        if (displayName && cred.user) {
+          await updateProfile(cred.user, { displayName });
         }
+        setSuccess('Account created successfully! Logging you in...');
       } else {
-        const { data, error: signInError } = await supabase.auth.signInWithPassword({
-          email,
-          password
-        });
-
-        if (signInError) {
-          setError(signInError.message);
-        } else if (data.user) {
-          setUser({
-            id: data.user.id,
-            email: data.user.email || '',
-            displayName: data.user.user_metadata?.displayName || data.user.email?.split('@')[0] || 'Researcher',
-            isGuest: false
-          });
-          navigate('/', { replace: true });
-        }
+        await signInWithEmailAndPassword(auth, email, password);
       }
     } catch (err: any) {
-      setError(err?.message || 'An unexpected auth failure occurred.');
+      console.error('Firebase Auth error, checking Supabase fallback:', err);
+      // Fallback check with Supabase if configured
+      if (supabase) {
+        try {
+          if (isSignUp) {
+            const { error: sbError } = await supabase.auth.signUp({
+              email,
+              password,
+              options: { data: { displayName } }
+            });
+            if (sbError) throw sbError;
+            setSuccess('Account created via Supabase. You can now log in.');
+          } else {
+            const { data: sbData, error: sbError } = await supabase.auth.signInWithPassword({ email, password });
+            if (sbError) throw sbError;
+            if (sbData.user) {
+              setUser({
+                id: sbData.user.id,
+                email: sbData.user.email || '',
+                displayName: sbData.user.user_metadata?.displayName || sbData.user.email?.split('@')[0] || 'Researcher',
+                isGuest: false
+              });
+              navigate('/', { replace: true });
+              return;
+            }
+          }
+        } catch (sbErr: any) {
+          setError(err.message || sbErr.message || 'Authentication failed.');
+        }
+      } else {
+        setError(err?.message || 'Authentication failed. Please check credentials.');
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  const handleBypass = () => {
-    setUser({
-      id: 'guest_user',
-      email: 'guest@verdict-lab.internal',
-      displayName: 'Guest Researcher',
-      isGuest: true
-    });
-    navigate('/', { replace: true });
+  const handleBypass = async () => {
+    setError(null);
+    setLoading(true);
+    try {
+      // SEC-006: Authenticate anonymously with Firebase to generate a unique cryptographic UID
+      const cred = await signInAnonymously(auth);
+      const guestId = cred.user.uid;
+      setUser({
+        id: guestId,
+        email: `guest_${guestId.slice(0, 8)}@verdict-lab.internal`,
+        displayName: 'Guest Researcher',
+        isGuest: true
+      });
+      navigate('/', { replace: true });
+    } catch (err: any) {
+      console.warn('Firebase anonymous auth not active, assigning isolated cryptographic UUID session:', err);
+      const uniqueGuestId = `guest_${crypto.randomUUID()}`;
+      setUser({
+        id: uniqueGuestId,
+        email: `${uniqueGuestId}@verdict-lab.internal`,
+        displayName: 'Guest Researcher',
+        isGuest: true
+      });
+      navigate('/', { replace: true });
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -168,7 +199,7 @@ function Login() {
           </div>
         )}
 
-        <form onSubmit={handleSupabaseAuth} className="space-y-4">
+        <form onSubmit={handleAuthSubmit} className="space-y-4">
           {isSignUp && (
             <div>
               <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Display Name</label>
@@ -270,34 +301,31 @@ export default function App() {
 
   useEffect(() => {
     setInitializing(true);
-    
-    // Check if there is an active guest session stored in Zustand
-    const { user } = useStore.getState();
-    if (user?.isGuest) {
-      setInitializing(false);
-      return;
-    }
 
-    // Initialize Supabase session listener if configured
-    let supabaseUnsubscribe = () => {};
-    if (supabase) {
-      supabase.auth.getSession().then(({ data: { session } }) => {
-        if (session) {
-          const u = session.user;
-          setUser({
-            id: u.id,
-            email: u.email || '',
-            displayName: u.user_metadata?.displayName || u.email?.split('@')[0] || 'Researcher',
-            isGuest: false,
-          });
-        } else {
+    // Primary link with Firebase Auth
+    const firebaseUnsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+      if (firebaseUser) {
+        setUser({
+          id: firebaseUser.uid,
+          email: firebaseUser.email || (firebaseUser.isAnonymous ? `guest_${firebaseUser.uid.slice(0, 8)}@verdict-lab.internal` : ''),
+          displayName: firebaseUser.displayName || (firebaseUser.isAnonymous ? 'Guest Researcher' : firebaseUser.email?.split('@')[0] || 'Researcher'),
+          photoURL: firebaseUser.photoURL || '',
+          isGuest: firebaseUser.isAnonymous
+        });
+      } else {
+        const currentUser = useStore.getState().user;
+        if (!currentUser?.isGuest) {
           setUser(null);
         }
-        setInitializing(false);
-      });
+      }
+      setInitializing(false);
+    });
 
+    // Optional sync with Supabase if configured for real-time collaboration
+    let supabaseUnsubscribe = () => {};
+    if (supabase) {
       const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-        if (session) {
+        if (session && !auth.currentUser) {
           const u = session.user;
           setUser({
             id: u.id,
@@ -305,40 +333,17 @@ export default function App() {
             displayName: u.user_metadata?.displayName || u.email?.split('@')[0] || 'Researcher',
             isGuest: false,
           });
-        } else {
-          // If the status has changed to signed out, but we are NOT in guest mode, sign out
-          const currentUserState = useStore.getState().user;
-          if (!currentUserState?.isGuest) {
-            setUser(null);
-          }
         }
       });
 
       supabaseUnsubscribe = () => {
         subscription.unsubscribe();
       };
-    } else {
-      // If supabase is not configured, we just keep whatever status is in the persistent Zustand store,
-      // which allows our robust mock user and Guest bypass mode to work perfectly!
-      setInitializing(false);
     }
 
-    // Fallback/secondary link with Firebase
-    const firebaseUnsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
-      if (firebaseUser) {
-        setUser({
-          id: firebaseUser.uid,
-          email: firebaseUser.email || '',
-          displayName: firebaseUser.displayName || '',
-          photoURL: firebaseUser.photoURL || '',
-          isGuest: false
-        });
-      }
-    });
-
     return () => {
-      supabaseUnsubscribe();
       firebaseUnsubscribe();
+      supabaseUnsubscribe();
     };
   }, [setUser, setInitializing]);
 
