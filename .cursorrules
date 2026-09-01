@@ -1,0 +1,20 @@
+# Verdict Lab — Cursor & Copilot Developer Guidelines
+
+## 1. Stack & Runtime
+- **Language**: TypeScript ~5.8 (Strict Type Checking)
+- **Frontend**: React 19, Vite 6, Tailwind CSS v4, Zustand 5, motion/react
+- **Backend Gateway**: Express 4, Node.js 22 LTS, @google/genai SDK
+- **Database & Cloud**: Firebase Firestore, Supabase Realtime
+
+## 2. Code Quality & Architectural Invariants
+- **Port & Host Invariant**: The server must always bind to host `0.0.0.0` and port `3000`.
+- **Server-Side API Key Isolation**: `GEMINI_API_KEY` is private to `server.ts`. Never prefix it with `VITE_` and never import it into client-side code.
+- **Top-Level Named Imports**: Always use top-level named imports. Avoid object destructuring in imports.
+- **Icons**: Exclusively use `lucide-react`. Never create raw SVG icons inline.
+- **Animations**: Use `motion/react` for layout transitions and enter animations.
+- **Styling**: Use standard Tailwind CSS utility classes. Never use inline styles or create ad-hoc `.css` stylesheets.
+- **ReDoS Prevention**: When compiling dynamic regular expressions for prompt template variables, always escape metacharacters (`.*+?^${}()|[]\`).
+- **Tie Resolution**: Maintain deterministic consensus voting resolution (`A`, `B`, or `Tie` when scores or votes are balanced).
+
+## 3. Testing & Validation
+- Always ensure `npm run lint` and `npm run test` pass before committing.

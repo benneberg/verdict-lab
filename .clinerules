@@ -1,0 +1,14 @@
+# Cline AI Operational Rules for Verdict Lab
+
+## Canonical Authority Model
+1. What the project is & user guide -> README.md
+2. Technical design, schemas & JDay pipeline -> ARCHITECTURE.md
+3. Contribution & setup instructions -> CONTRIBUTING.md
+4. Security boundaries & rate limits -> SECURITY.md
+5. Operational AI constraints -> .llm-context/context.md
+
+## Critical Constraints
+- Do NOT alter the server port (3000) or host binding (0.0.0.0).
+- Do NOT expose `GEMINI_API_KEY` to client components.
+- Do NOT disable or modify Firestore security rule ownership validations without explicit testing.
+- Always run `npm run test` (Vitest) when modifying consensus scoring or regex parsers.

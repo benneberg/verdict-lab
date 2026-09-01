@@ -1,5 +1,14 @@
 # Verdict Lab 🧪
 
+[![CI Pipeline](https://github.com/your-username/verdict-lab/actions/workflows/ci.yml/badge.svg)](https://github.com/your-username/verdict-lab/actions)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.8-blue.svg?logo=typescript)](https://www.typescriptlang.org/)
+[![React](https://img.shields.io/badge/React-19.0-61dafb.svg?logo=react)](https://react.dev/)
+[![Express](https://img.shields.io/badge/Express-4.21-000000.svg?logo=express)](https://expressjs.com/)
+[![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-v4-38bdf8.svg?logo=tailwindcss)](https://tailwindcss.com/)
+[![Vite](https://img.shields.io/badge/Vite-6.2-646cff.svg?logo=vite)](https://vitejs.dev/)
+[![Vitest](https://img.shields.io/badge/Tested_with-Vitest-6e9f18.svg?logo=vitest)](https://vitest.dev/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 > **Empirical Prompt Engineering & LLM Behavioral Evaluation Workbench**
 
 Verdict Lab is a full-stack developer workbench designed to bring scientific rigor, repeatable benchmarking, and bias-aware evaluation to prompt engineering and LLM application development. 
