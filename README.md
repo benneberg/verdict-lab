@@ -1,6 +1,6 @@
 # Verdict Lab 🧪
 
-[![CI Pipeline](https://github.com/your-username/verdict-lab/actions/workflows/ci.yml/badge.svg)](https://github.com/your-username/verdict-lab/actions)
+[![CI Pipeline](https://github.com/benneberg/verdict-lab/actions/workflows/ci.yml/badge.svg)](https://github.com/benneberg/verdict-lab/actions)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8-blue.svg?logo=typescript)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-19.0-61dafb.svg?logo=react)](https://react.dev/)
 [![Express](https://img.shields.io/badge/Express-4.21-000000.svg?logo=express)](https://expressjs.com/)
