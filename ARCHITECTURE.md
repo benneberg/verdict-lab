@@ -1,7 +1,7 @@
 # Verdict Lab — Architecture Specification 🏛️
 
 > **Authoritative Technical Architecture Document**  
-> *Last Updated*: August 2026  
+> *Last Updated*: September 2026  
 > *System Target*: Verdict Lab (React 19 + Express 4 + Google GenAI + Firebase Firestore + Supabase Realtime)
 
 ---
@@ -18,7 +18,7 @@ Verdict Lab is a full-stack, single-page application (SPA) backed by a dedicated
 │                                                                             │
 │  React 19 SPA (Vite 6)                                                      │
 │  ├── Global Navigation & Routing (react-router-dom)                         │
-│  ├── Local Client State & Caching (Zustand: useStore)                       │
+│  ├── Local Client State & Mock Toggle (Zustand: useStore)                   │
 │  ├── Interactive Views (/arena, /lab, /registry, /benchmarks, /history)     │
 │  └── Client Services (geminiService, metricsService)                        │
 └─────────────────────────┬───────────────────────────────────┬───────────────┘
@@ -30,6 +30,8 @@ Verdict Lab is a full-stack, single-page application (SPA) backed by a dedicated
 │  Node.js Runtime (Port 3000, Host 0.0.0.0)         │        │
 │  ├── Security Headers (helmet)                     │        │
 │  ├── Rate Limiting (express-rate-limit)            │        │
+│  ├── Evaluation Cache Layer (SHA-256 LRU Store)    │        │
+│  ├── Offline Mock Engine (Deterministic Sim)       │        │
 │  ├── Input Schema Validation & Payload Limits      │        │
 │  ├── Structured JSON Observability Logging         │        │
 │  └── Vite Dev Middleware / Static Production Serve │        │
@@ -53,9 +55,11 @@ Verdict Lab is a full-stack, single-page application (SPA) backed by a dedicated
 ## 2. System Components
 
 ### 2.1 Backend API Gateway (`server.ts`)
-The backend is an Express 4 application running on Node.js that serves two core roles:
+The backend is an Express 4 application running on Node.js that serves core operational roles:
 1. **API Gateway & Model Proxy**: Protects sensitive credentials (`GEMINI_API_KEY`) on the server. Clients never access Google GenAI credentials directly.
-2. **Static Asset Host & Vite Middleware**: In development mode (`NODE_ENV !== "production"`), Vite middleware is mounted to handle HMR-less module resolution and SPA routing. In production, pre-compiled static assets in `dist/` are served with an SPA catch-all route.
+2. **Evaluation Cache Layer (`evalCache.ts`)**: Generates deterministic SHA-256 digests of `(variantA, variantB, rubric, models)` payloads, returning instant cached responses (`X-Cache: HIT`) to eliminate redundant LLM token spend.
+3. **Offline Mock Engine (`mockEngine.ts`)**: Evaluates responses using heuristic algorithms when `mockMode` or `X-Mock-Mode` is enabled or when `GEMINI_API_KEY` is not present, allowing full end-to-end demonstrations offline.
+4. **Static Asset Host & Vite Middleware**: In development mode (`NODE_ENV !== "production"`), Vite middleware is mounted to handle HMR-less module resolution and SPA routing. In production, pre-compiled static assets in `dist/` are served with an SPA catch-all route.
 
 **Network Invariants**:
 - The server binds strictly to `0.0.0.0` on port `3000`. This is an unchangeable container ingress requirement.
@@ -64,7 +68,7 @@ The backend is an Express 4 application running on Node.js that serves two core 
 ### 2.2 Frontend SPA (`src/`)
 Built with React 19 and bundled via Vite 6:
 - **Routing**: Client-side routing managed by `react-router-dom` v7. Route changes render within a persistent application shell (`Layout.tsx`).
-- **State Store**: Managed by Zustand (`src/store/useStore.ts`) with `localStorage` fallback persistence for offline continuity and session preservation.
+- **State Store**: Managed by Zustand (`src/store/useStore.ts`) with `localStorage` persistence for preferences and mock mode status.
 - **Styling**: Tailwind CSS v4 using the modern `@tailwindcss/vite` plugin and utility classes.
 - **Icons & Motion**: All icons are imported from `lucide-react`. Animations use `motion/react`.
 
@@ -88,30 +92,35 @@ The **JDay Consensus Engine** is the core analytical pipeline that evaluates can
 2. Client calls POST /api/evaluate with Auth Header
                │
                ▼
-3. Server executes security checks:
+3. Server executes security & cache checks:
    - Rate limit check (30 req/min)
    - Input schema validation (type, length <= 50,000 chars, model count <= 3)
+   - SHA-256 Cache Lookup: If match found & !X-Bypass-Cache -> Return X-Cache: HIT
                │
                ▼
-4. Model List Mapping & Filtering
+4. Mode Check: If mockMode / X-Mock-Mode -> Execute Deterministic Mock Engine
+               │
+               ▼
+5. Model List Mapping & Filtering
    (Replaces legacy/preview names with modern models: gemini-3.5-flash, gemini-3.1-pro-preview)
                │
                ▼
-5. Concurrent Multi-Judge Invocation (Promise.all)
+6. Concurrent Multi-Judge Invocation (Promise.all)
    - Dispatches evaluation prompt to each selected judge model
    - Structured JSON output enforced via Type.OBJECT schema
    - Judges evaluate: winner ("A" | "B" | "Tie"), confidence, metric scores, bias_flags, reasoning
                │
                ▼
-6. Server-Side Result Synthesis & Tally:
+7. Server-Side Result Synthesis & Tally:
    - Majority Vote Calculation: tally A vs. B vs. Tie
    - Score Normalization: arithmetic mean of scores per metric across all responding judges
    - Agreement / Reliability Index: max(tally) / total_valid_judges
    - Bias Flag Deduplication: collects unique flags identified across judges
    - Composite Reasoning Aggregation: combines per-judge justifications
+   - Stores synthesized result in Evaluation Cache
                │
                ▼
-7. Response returned to client and stored in Firestore experiments collection
+8. Response returned to client and stored in Firestore experiments collection
 ```
 
 ### 3.2 Bias Mitigation Heuristics
@@ -128,54 +137,73 @@ The JDay system instruction embeds three active bias mitigation directives into 
 
 ---
 
-## 4. Data Persistence & Firestore Schemas
+## 4. Evaluation Cache Architecture (`evalCache.ts`)
+
+To optimize latency and prevent unnecessary token consumption, Verdict Lab implements a dedicated SHA-256 in-memory evaluation cache:
+
+- **Canonical Key Generation**:
+  Payload attributes `variantA`, `variantB`, `hypothesis`, sorted `rubric` keys, and sorted `models` are serialized into a canonical JSON string and hashed using SHA-256.
+- **LRU Eviction**:
+  Maintains a default capacity of 500 entries with a 1-hour time-to-live (TTL). When capacity is exceeded, least recently accessed entries are automatically evicted.
+- **Telemetry & Management**:
+  - `GET /api/cache/stats`: Exposes cache hits, misses, active size, hit ratio, and evictions.
+  - `POST /api/cache/clear`: Flushes all cache keys.
+  - `X-Bypass-Cache: true`: Header to force re-evaluation from live LLM models.
+
+---
+
+## 5. Offline Demonstration & Mock Engine (`mockEngine.ts`)
+
+The offline engine provides a deterministic, zero-dependency environment for testing, demonstrations, and CI test pipelines:
+
+- **Heuristic Quality Scoring**: Analyzes structural clarity, presence of markdown lists, word count density, and keyword match with the test hypothesis.
+- **Strict Schema Compliance**: Emits complete payload structures conforming to `EvaluationResult` (winner, confidence, scores, reasoning, bias flags).
+- **Synthetic Inference**: Responds to `/api/inference` requests with context-aware responses incorporating prompt parameters.
+
+---
+
+## 6. Data Persistence & Firestore Schemas
 
 All persistent records are stored in Firebase Firestore across three top-level collections:
 
-### 4.1 Collection: `test_cards`
-Represents an empirical testing protocol.
+### 6.1 Collection: `test_cards`
 ```typescript
 interface TestCard {
   id: string;
-  title: string;
+  name: string;
   description: string;
   hypothesis: string;
-  independentVariables: string[]; // e.g. ["persona", "tone", "output_format"]
-  promptTemplate: string;         // May contain {variable} placeholders
-  version: number;
-  rubric: Record<string, { max: number; weight: number }>;
-  isPublic: boolean;
+  independent_variable: string;
+  variants: Array<{ id: string; label: string; prompt_template: string }>;
+  evaluation_rubric: Record<string, { max: number; weight: number }>;
+  input_schema: Record<string, any>;
   ownerId: string;
-  createdAt: string;              // ISO-8601
-  updatedAt: string;              // ISO-8601
+  createdAt: any;
 }
 ```
 
-### 4.2 Collection: `test_card_versions`
-Historical snapshots of test cards captured whenever a protocol is updated.
+### 6.2 Collection: `test_card_versions`
 ```typescript
 interface TestCardVersion {
   id: string;
   cardId: string;
   version: number;
-  promptTemplate: string;
-  rubric: Record<string, { max: number; weight: number }>;
+  prompt_template: string;
+  evaluation_rubric: Record<string, any>;
   hypothesis: string;
-  changesSummary?: string;
+  changes_summary?: string;
   ownerId: string;
-  createdAt: string;
+  createdAt: any;
 }
 ```
 
-### 4.3 Collection: `experiments`
-Execution records of pairwise evaluation runs.
+### 6.3 Collection: `experiments`
 ```typescript
 interface Experiment {
   id: string;
-  cardId?: string;
-  variantA: { prompt: string; output: string };
-  variantB: { prompt: string; output: string };
-  judges: string[];
+  testCardId?: string;
+  input: Record<string, any>;
+  results: Record<string, string>; // { A: outputA, B: outputB }
   verdict: {
     winner: "A" | "B" | "Tie";
     confidence: number;
@@ -187,18 +215,20 @@ interface Experiment {
     bias_flags: string[];
     reasoning: string;
     inter_rater_reliability?: number;
+    cached?: boolean;
+    isMock?: boolean;
   };
-  inputs?: Record<string, any>;
+  judges: string[];
   ownerId: string;
-  createdAt: string;
+  createdAt: any;
 }
 ```
 
 ---
 
-## 5. Security Architecture
+## 7. Security Architecture
 
-Verdict Lab implements defense-in-depth security across authorization, secret management, infrastructure, and input sanitization. Detailed policies are documented in [SECURITY.md](./SECURITY.md).
+Verdict Lab implements defense-in-depth security:
 
 1. **Server-Side Key Isolation**: `GEMINI_API_KEY` is strictly confined to the Node.js runtime process and accessed only in `server.ts`. It is never provided to Vite or bundled into client code.
 2. **Cryptographic Firestore Rules**: `firestore.rules` enforces `request.auth.uid == resource.data.ownerId` for document modifications and deletes. Read operations on `test_cards` are restricted to public cards or cards owned by the authenticated caller. Experiments are strictly private to their owner.
@@ -206,29 +236,19 @@ Verdict Lab implements defense-in-depth security across authorization, secret ma
    - Global `/api/` ceiling: 120 requests per minute per IP.
    - Cost-intensive endpoints (`/api/evaluate`, `/api/inference`): 30 requests per minute per IP.
 4. **Input Schema & Length Boundaries**: Requests to `/api/evaluate` and `/api/inference` validate types and enforce strict character ceilings (maximum 50,000 characters per variant/prompt, maximum 3 judge models, maximum 15 rubric metrics).
-5. **ReDoS Resilience**: Prompt template variable interpolation uses explicit regular expression escaping (`escapeRegex`) before replacing placeholders, eliminating Regular Expression Denial of Service risks.
+5. **ReDoS Resilience**: Prompt template variable interpolation uses explicit regular expression escaping (`escapeRegex`) before replacing placeholders.
 6. **Defensive HTTP Headers**: Configured with `helmet` for cross-origin resource protection and header hardening.
 
 ---
 
-## 6. Architectural Invariants
+## 8. Testing Strategy
 
-The following constraints are non-negotiable architectural invariants:
+The automated test suite in `src/tests/` uses **Vitest** and **Supertest**:
 
-1. **Port & Host Binding**: The backend server must bind to `0.0.0.0:3000`. Port 3000 is hardcoded in the deployment container routing infrastructure.
-2. **No Client-Side AI API Keys**: Under no circumstances should `GEMINI_API_KEY` or any other LLM credential be prefixed with `VITE_` or read directly in browser components. All model interactions must pass through `/api/*` endpoints.
-3. **Deterministic Tie Resolution**: When judge models disagree evenly (e.g., 1 vote A, 1 vote B), the system must produce a `"Tie"` verdict with proportional agreement confidence rather than arbitrarily favoring one variant.
-4. **Single-Process Development & Production**: In development, `npm run dev` boots `server.ts` with tsx and embedded Vite. In production, `npm run build` compiles Vite assets to `dist/` and bundles `server.ts` to `dist/server.cjs` via esbuild, started via `node dist/server.cjs`.
-
----
-
-## 7. Testing Strategy
-
-The automated test suite in `src/tests/JDay.test.ts` uses **Vitest** to verify critical domain logic:
-
-- **Consensus Tally Verification**: Validates majority determination, tie resolution, and agreement ratio calculations.
-- **ReDoS & Injection Resilience**: Validates that prompt variable interpolation handles regex metacharacters (`.*+?^${}()|[]\`) safely without syntax exceptions or catastrophic backtracking.
-- **Template Placeholder Parsing**: Validates extracting variable names (`{variable_name}`) without false positives on malformed or unclosed curly braces.
+- **API Gateway Integration Tests (`src/tests/api.test.ts`)**: Validates input validation error branches, character limits, mock evaluation mode, cache hits/misses, telemetry, and bypass headers with Supertest.
+- **Consensus Tally Verification (`src/tests/JDay.test.ts`)**: Validates majority determination, tie resolution, and agreement ratio calculations.
+- **ReDoS & Injection Resilience**: Validates that prompt variable interpolation handles regex metacharacters safely without catastrophic backtracking.
+- **Template Placeholder Parsing**: Validates extracting variable names without false positives on malformed curly braces.
 
 Run tests using:
 ```bash

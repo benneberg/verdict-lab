@@ -14,6 +14,9 @@ interface AppState {
   setUser: (user: UserProfile | null) => void;
   isInitializing: boolean;
   setInitializing: (val: boolean) => void;
+  mockMode: boolean;
+  toggleMockMode: () => void;
+  setMockMode: (val: boolean) => void;
 }
 
 export const useStore = create<AppState>()(
@@ -23,11 +26,16 @@ export const useStore = create<AppState>()(
       setUser: (user) => set({ user }),
       isInitializing: true,
       setInitializing: (val) => set({ isInitializing: val }),
+      mockMode: false,
+      toggleMockMode: () => set((state) => ({ mockMode: !state.mockMode })),
+      setMockMode: (val) => set({ mockMode: val }),
     }),
     {
       name: 'verdict-lab-storage',
-      // SEC-011: Avoid persisting sensitive user profiles in localStorage; state is managed dynamically by Firebase Auth
-      partialize: () => ({}),
+      // Persist mockMode preference safely while excluding sensitive auth objects
+      partialize: (state) => ({
+        mockMode: state.mockMode,
+      }),
     }
   )
 );

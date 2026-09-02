@@ -1,10 +1,47 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useStore } from '../store/useStore';
-import { User, Mail, ShieldCheck, Key, Shield } from 'lucide-react';
+import { User, Mail, ShieldCheck, Key, Shield, Zap, RefreshCw, Trash2, Cpu } from 'lucide-react';
 import { motion } from 'motion/react';
+import { getCacheStats, clearEvaluationCache } from '../services/geminiService';
 
 export function DressingRoom() {
-  const { user } = useStore();
+  const { user, mockMode, toggleMockMode } = useStore();
+  const [cacheStats, setCacheStats] = useState<{
+    hits: number;
+    misses: number;
+    size: number;
+    hitRatio: number;
+    evictions: number;
+  } | null>(null);
+  const [isClearing, setIsClearing] = useState(false);
+  const [cacheMessage, setCacheMessage] = useState<string | null>(null);
+
+  const loadStats = async () => {
+    try {
+      const stats = await getCacheStats();
+      setCacheStats(stats);
+    } catch (e) {
+      console.warn("Could not load cache statistics:", e);
+    }
+  };
+
+  useEffect(() => {
+    loadStats();
+  }, []);
+
+  const handleClearCache = async () => {
+    setIsClearing(true);
+    try {
+      const res = await clearEvaluationCache();
+      setCacheStats(res.stats);
+      setCacheMessage("Cache flushed successfully.");
+      setTimeout(() => setCacheMessage(null), 3000);
+    } catch (e) {
+      setCacheMessage("Failed to clear cache.");
+    } finally {
+      setIsClearing(false);
+    }
+  };
 
   if (!user) return null;
 
@@ -40,7 +77,7 @@ export function DressingRoom() {
           </div>
 
           <div className="space-y-4 pt-6">
-            <div className="grid-header text-[9px]">Credentials</div>
+            <div className="grid-header text-[9px]">Credentials & Execution Environment</div>
             <div className="flex items-center justify-between border-b border-[#141414]/5 pb-2">
               <div className="flex items-center gap-2 text-xs font-mono">
                 <Mail size={14} className="opacity-40" />
@@ -56,18 +93,106 @@ export function DressingRoom() {
               <div className="text-[10px] font-mono opacity-40">{user.id.length > 16 ? `${user.id.slice(0, 16)}...` : user.id}</div>
             </div>
           </div>
+
+          {/* Offline / Mock Mode Simulation Toggle */}
+          <div className="pt-4">
+            <div className="grid-header text-[9px] mb-3">Offline Demonstration & Mock Evaluation Mode</div>
+            <div className={`p-4 border transition-all ${mockMode ? 'border-amber-500 bg-amber-50/50 shadow-[2px_2px_0_#d97706]' : 'border-[#141414] bg-slate-50 shadow-[2px_2px_0_#141414]'}`}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <Cpu size={20} className={mockMode ? 'text-amber-600' : 'text-slate-500'} />
+                  <div>
+                    <div className="text-xs font-bold font-mono flex items-center gap-2">
+                      MOCK_EVALUATION_MODE
+                      {mockMode && <span className="px-1.5 py-0.5 bg-amber-200 text-amber-900 text-[8px] font-bold">ACTIVE</span>}
+                    </div>
+                    <div className="text-[10px] font-mono opacity-60">
+                      Simulates deterministic multi-judge evaluations offline without consuming Gemini API tokens.
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={toggleMockMode}
+                  className={`px-3 py-1.5 text-[10px] font-mono font-bold uppercase transition-all cursor-pointer border ${
+                    mockMode 
+                      ? 'bg-amber-600 text-white border-amber-700 shadow-[1px_1px_0_#000]' 
+                      : 'bg-white text-slate-800 border-[#141414] hover:bg-slate-100 shadow-[1px_1px_0_#141414]'
+                  }`}
+                >
+                  {mockMode ? 'DISABLE MOCK' : 'ENABLE MOCK'}
+                </button>
+              </div>
+            </div>
+          </div>
         </section>
 
         <section className="lab-card space-y-6">
-          <div className="grid-header border-[#141414]/10">Provider Integrations</div>
+          <div className="grid-header border-[#141414]/10">Evaluation Cache & Latency Optimization</div>
           
           <div className="space-y-4">
+            <div className="p-4 border border-[#141414] bg-slate-50 shadow-[2px_2px_0_#141414] space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-xs font-bold font-mono">
+                  <Zap size={16} className="text-amber-500" />
+                  IN_MEMORY_EVALUATION_CACHE
+                </div>
+                <button 
+                  onClick={loadStats} 
+                  title="Refresh statistics"
+                  className="p-1 hover:bg-slate-200 text-slate-600 rounded transition-colors"
+                >
+                  <RefreshCw size={12} />
+                </button>
+              </div>
+              <p className="text-[10px] font-mono opacity-60">
+                Caches identical (Variant A, Variant B, Rubric, Models) evaluation tuples to eliminate redundant LLM API costs and provide instant responses.
+              </p>
+
+              {cacheStats && (
+                <div className="grid grid-cols-3 gap-2 pt-2 border-t border-[#141414]/10 font-mono text-[10px]">
+                  <div className="bg-white p-2 border border-[#141414]/10">
+                    <div className="opacity-50 text-[8px] uppercase">Cache Hits</div>
+                    <div className="text-sm font-bold text-green-700">{cacheStats.hits}</div>
+                  </div>
+                  <div className="bg-white p-2 border border-[#141414]/10">
+                    <div className="opacity-50 text-[8px] uppercase">Cached Items</div>
+                    <div className="text-sm font-bold">{cacheStats.size}</div>
+                  </div>
+                  <div className="bg-white p-2 border border-[#141414]/10">
+                    <div className="opacity-50 text-[8px] uppercase">Hit Ratio</div>
+                    <div className="text-sm font-bold">{((cacheStats.hitRatio || 0) * 100).toFixed(1)}%</div>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex items-center justify-between pt-2">
+                <span className="text-[9px] font-mono text-green-600 font-bold flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block animate-pulse"></span>
+                  CACHE_ACTIVE (TTL: 1 hour)
+                </span>
+                <button
+                  type="button"
+                  onClick={handleClearCache}
+                  disabled={isClearing}
+                  className="px-2.5 py-1 text-[9px] font-mono font-bold text-red-600 border border-red-300 hover:bg-red-50 cursor-pointer flex items-center gap-1.5 transition-colors"
+                >
+                  <Trash2 size={10} />
+                  {isClearing ? "CLEARING..." : "FLUSH CACHE"}
+                </button>
+              </div>
+              {cacheMessage && (
+                <div className="text-[9px] font-mono text-slate-600 italic">{cacheMessage}</div>
+              )}
+            </div>
+
+            <div className="grid-header text-[9px] pt-4">Provider Integrations</div>
             <div className="flex items-center justify-between p-4 border border-[#141414] bg-[#141414]/5 shadow-[2px_2px_0_#141414]">
                <div className="flex items-center gap-4">
                  <Shield size={20} />
                  <div>
                    <div className="text-xs font-bold font-mono">GOOGLE_GENAI</div>
-                   <div className="text-[10px] font-mono opacity-40 italic">Injected_via_environment</div>
+                   <div className="text-[10px] font-mono opacity-40 italic">Injected_via_server_environment</div>
                  </div>
                </div>
                <div className="text-[9px] font-bold text-green-600 font-mono">CONNECTED</div>
@@ -83,51 +208,9 @@ export function DressingRoom() {
                </div>
                <div className="text-[9px] font-bold font-mono">UNAVAILABLE</div>
             </div>
-
-            <div className="flex items-center justify-between p-4 border border-[#141414]/20 opacity-40 cursor-not-allowed">
-               <div className="flex items-center gap-4">
-                 <Key size={20} />
-                 <div>
-                   <div className="text-xs font-bold font-mono">ANTHROPIC_DIRECT</div>
-                   <div className="text-[10px] font-mono italic">Future_release_v2.0</div>
-                 </div>
-               </div>
-               <div className="text-[9px] font-bold font-mono">UNAVAILABLE</div>
-            </div>
-          </div>
-
-          <div className="lab-card border-dashed bg-yellow-50/50 mt-8">
-            <h4 className="text-[10px] font-bold uppercase font-mono mb-2 flex items-center gap-2">
-              <AlertTriangle size={14} className="text-yellow-600" />
-              Security Protocol
-            </h4>
-            <p className="text-[10px] leading-relaxed opacity-60">
-              API keys are currently managed via the AI Studio Secrets panel. Verdict Lab does not store third-party keys client-side to prevent session hijacking. Direct BYOK configuration will be available in the Enterprise release.
-            </p>
           </div>
         </section>
       </div>
     </div>
-  );
-}
-
-function AlertTriangle(props: any) {
-  return (
-    <svg
-      {...props}
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" />
-      <path d="M12 9v4" />
-      <path d="M12 17h.01" />
-    </svg>
   );
 }

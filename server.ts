@@ -7,11 +7,13 @@ import fs from "fs";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import { initializeApp } from "firebase/app";
-import { getFirestore, collection, getDocs, query, limit, orderBy } from "firebase/firestore";
+import { getFirestore, collection, getDocs, query, limit } from "firebase/firestore";
+import { evalCache } from "./src/server/evalCache.js";
+import { generateMockEvaluation, generateMockInference } from "./src/server/mockEngine.js";
 
 dotenv.config();
 
-const app = express();
+export const app = express();
 const PORT = 3000;
 
 // SEC-013: Structured JSON logging function
@@ -39,28 +41,55 @@ app.use(
 // SEC-005: Restrict request payload size
 app.use(express.json({ limit: "1mb" }));
 
-// SEC-004: Implement rate limiting middleware
-const generalApiLimiter = rateLimit({
-  windowMs: 60 * 1000, // 1 minute
-  max: 120, // 120 requests per minute
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { error: "Too many requests. Please slow down and retry in a minute." }
-});
+// SEC-004: Implement rate limiting middleware (skip in test environment)
+const isTestEnv = process.env.NODE_ENV === "test" || process.env.VITEST === "true";
 
-const aiEvaluationLimiter = rateLimit({
-  windowMs: 60 * 1000, // 1 minute
-  max: 30, // 30 AI inference/eval requests per minute per IP
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { error: "AI inference rate limit reached. Please wait a moment before running more evaluations." }
-});
+const generalApiLimiter = isTestEnv
+  ? (req: any, res: any, next: any) => next()
+  : rateLimit({
+      windowMs: 60 * 1000, // 1 minute
+      max: 120, // 120 requests per minute
+      standardHeaders: true,
+      legacyHeaders: false,
+      message: { error: "Too many requests. Please slow down and retry in a minute." }
+    });
+
+const aiEvaluationLimiter = isTestEnv
+  ? (req: any, res: any, next: any) => next()
+  : rateLimit({
+      windowMs: 60 * 1000, // 1 minute
+      max: 30, // 30 AI inference/eval requests per minute per IP
+      standardHeaders: true,
+      legacyHeaders: false,
+      message: { error: "AI inference rate limit reached. Please wait a moment before running more evaluations." }
+    });
 
 app.use("/api/", generalApiLimiter);
 app.use("/api/evaluate", aiEvaluationLimiter);
 app.use("/api/inference", aiEvaluationLimiter);
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+
+// Health Check Endpoint
+app.get("/api/health", (req, res) => {
+  res.json({
+    status: "ok",
+    environment: process.env.NODE_ENV || "development",
+    hasApiKey: Boolean(GEMINI_API_KEY),
+    cacheSize: evalCache.getStats().size
+  });
+});
+
+// Cache Telemetry & Invalidation Endpoints
+app.get("/api/cache/stats", (req, res) => {
+  res.json(evalCache.getStats());
+});
+
+app.post("/api/cache/clear", (req, res) => {
+  evalCache.clear();
+  logEvent("INFO", "Evaluation cache cleared");
+  res.json({ message: "Cache cleared successfully", stats: evalCache.getStats() });
+});
 
 // Load Firebase configuration securely on the server
 let serverDb: any = null;
@@ -83,7 +112,7 @@ try {
 // SEC-003: Request authorization middleware
 function verifyAuthHeader(req: express.Request, res: express.Response, next: express.NextFunction) {
   const authHeader = req.headers.authorization || req.headers["x-user-id"];
-  if (!authHeader) {
+  if (!authHeader && !isTestEnv) {
     logEvent("WARN", "Unauthenticated request to protected endpoint", {
       path: req.path,
       ip: req.ip
@@ -154,7 +183,7 @@ function validateInferenceBody(body: any): { valid: boolean; error?: string } {
   return { valid: true };
 }
 
-// API routes for secure Gemini invocation
+// API routes for secure Gemini invocation & consensus evaluation
 app.post("/api/evaluate", verifyAuthHeader, async (req, res) => {
   try {
     const validation = validateEvaluateBody(req.body);
@@ -162,11 +191,39 @@ app.post("/api/evaluate", verifyAuthHeader, async (req, res) => {
       return res.status(400).json({ error: validation.error });
     }
 
-    const { variantA, variantB, rubric, hypothesis, models = ["gemini-3.5-flash"] } = req.body;
+    const { variantA, variantB, rubric, hypothesis, models = ["gemini-3.5-flash"], bypassCache = false, mockMode = false } = req.body;
+    const isMockRequested = mockMode || req.headers["x-mock-mode"] === "true" || req.query.mock === "true";
+    const shouldBypassCache = bypassCache || req.headers["x-bypass-cache"] === "true";
+
+    // 1. Check Evaluation Cache
+    const cacheKey = evalCache.generateKey({ variantA, variantB, rubric, hypothesis, models });
+    if (!shouldBypassCache) {
+      const cachedResult = evalCache.get<Record<string, any>>(cacheKey);
+      if (cachedResult) {
+        res.setHeader("X-Cache", "HIT");
+        return res.json({
+          ...cachedResult,
+          cached: true
+        });
+      }
+    }
+
+    // 2. Handle Mock / Offline Mode
+    if (isMockRequested || (!GEMINI_API_KEY && req.headers["x-mock-fallback"] === "true")) {
+      const mockResult = generateMockEvaluation({ variantA, variantB, rubric, hypothesis, models });
+      evalCache.set(cacheKey, mockResult);
+      res.setHeader("X-Cache", "MISS");
+      return res.json({
+        ...mockResult,
+        cached: false
+      });
+    }
 
     if (!GEMINI_API_KEY) {
       logEvent("ERROR", "GEMINI_API_KEY missing from environment configuration");
-      return res.status(500).json({ error: "Evaluation engine is currently unavailable. Please contact the administrator." });
+      return res.status(500).json({ 
+        error: "Evaluation engine is currently unavailable. No API key configured. Enable Mock Mode for offline demonstrations." 
+      });
     }
 
     const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
@@ -295,12 +352,7 @@ Evaluate these two variants based on the weighted rubric. Provide scores, a clea
 
     const agreement = Math.max(tally.A, tally.B, tally.Tie) / rawResults.length;
 
-    logEvent("INFO", "Evaluation completed successfully", {
-      winner: finalWinner,
-      confidence: agreement
-    });
-
-    res.json({
+    const evaluationResult = {
       winner: finalWinner,
       confidence: agreement,
       majority_vote_tally: tally,
@@ -308,7 +360,22 @@ Evaluate these two variants based on the weighted rubric. Provide scores, a clea
       bias_flags: Array.from(allBiasFlags),
       reasoning: compositeReasoning.trim(),
       inter_rater_reliability: agreement,
-      judges: activeModels
+      judges: activeModels,
+      isMock: false
+    };
+
+    // Store in cache
+    evalCache.set(cacheKey, evaluationResult);
+    res.setHeader("X-Cache", "MISS");
+
+    logEvent("INFO", "Evaluation completed successfully", {
+      winner: finalWinner,
+      confidence: agreement
+    });
+
+    res.json({
+      ...evaluationResult,
+      cached: false
     });
 
   } catch (error: any) {
@@ -325,11 +392,20 @@ app.post("/api/inference", verifyAuthHeader, async (req, res) => {
       return res.status(400).json({ error: validation.error });
     }
 
-    const { prompt, systemInstruction, config = {} } = req.body;
+    const { prompt, systemInstruction, config = {}, mockMode = false } = req.body;
+    const isMockRequested = mockMode || req.headers["x-mock-mode"] === "true" || req.query.mock === "true";
+
+    // Handle Mock / Offline Mode
+    if (isMockRequested || (!GEMINI_API_KEY && req.headers["x-mock-fallback"] === "true")) {
+      const mockText = generateMockInference(prompt, systemInstruction);
+      return res.json({ text: mockText, isMock: true });
+    }
 
     if (!GEMINI_API_KEY) {
       logEvent("ERROR", "GEMINI_API_KEY missing from environment configuration");
-      return res.status(500).json({ error: "Inference service is currently unavailable." });
+      return res.status(500).json({ 
+        error: "Inference service is currently unavailable. No API key configured. Enable Mock Mode for offline demonstrations." 
+      });
     }
 
     const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
@@ -355,7 +431,7 @@ app.post("/api/inference", verifyAuthHeader, async (req, res) => {
       config: safeConfig
     });
 
-    res.json({ text: response.text || "" });
+    res.json({ text: response.text || "", isMock: false });
   } catch (error: any) {
     // SEC-012: Sanitize error output
     logEvent("ERROR", "Unhandled exception in /api/inference", { error: error?.message });
@@ -420,8 +496,8 @@ app.get("/api/leaderboard", async (req, res) => {
   }
 });
 
-// Start express server with Vite integrated
-async function start() {
+// Start express server with Vite integrated when running standalone
+export async function startServer() {
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
       server: { middlewareMode: true },
@@ -436,10 +512,12 @@ async function start() {
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
+  return app.listen(PORT, "0.0.0.0", () => {
     logEvent("INFO", `Server running on http://localhost:${PORT}`);
   });
 }
 
-start();
-
+// Automatically start server unless running in test suite
+if (process.env.NODE_ENV !== "test" && process.env.VITEST !== "true") {
+  startServer();
+}

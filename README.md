@@ -23,10 +23,13 @@ Rather than relying on informal "eyeball checks" or subjective qualitative impre
 - [Core Capabilities](#core-capabilities)
 - [Architecture & Tech Stack](#architecture--tech-stack)
 - [Quick Start](#quick-start)
+- [Offline & Mock Mode](#offline--mock-evaluation-mode)
+- [Evaluation Cache Layer](#evaluation-cache-layer)
 - [Environment Configuration](#environment-configuration)
 - [Application Views & Workflow](#application-views--workflow)
 - [API Gateway Reference](#api-gateway-reference)
 - [Verification & Testing](#verification--testing)
+- [Local Firebase Emulator](#local-firebase-emulator)
 - [Canonical Documentation](#canonical-documentation)
 
 ---
@@ -49,7 +52,8 @@ Verdict Lab solves these challenges through **structured test card authoring**, 
 ### 1. Pairwise Execution Arena (`/arena`)
 - Run candidate prompt variations (Variant A vs. Variant B) side-by-side in real time.
 - Substitute template variables manually or run automated evaluations.
-- Select from modern Gemini models (e.g., `gemini-3.1-pro-preview`, `gemini-3.5-flash`, `gemini-2.5-flash`).
+- Select from modern Gemini models (`gemini-3.1-pro-preview`, `gemini-3.5-flash`, `gemini-2.5-flash`).
+- Built-in visual indicators for cached verdicts (0ms LLM latency) and simulated evaluations.
 
 ### 2. JDay Multi-Judge Consensus Engine
 - Dispatch candidate responses to a configurable multi-model jury.
@@ -70,16 +74,25 @@ Verdict Lab solves these challenges through **structured test card authoring**, 
 - Upload or paste JSON array test cases directly into the Arena.
 - Execute automated matrix evaluations across dozens of input variations sequentially with real-time progress indicators.
 
-### 6. Model Benchmark Leaderboard (`/benchmarks`)
+### 6. Evaluation Cache Layer & Latency Optimization
+- Deterministic SHA-256 payload hashing of `(variantA, variantB, rubric, models)` tuples.
+- In-memory LRU cache with configurable TTL (default: 1 hour) eliminating redundant LLM API calls and token spend.
+- Telemetry endpoints (`GET /api/cache/stats`, `POST /api/cache/clear`) and cache bypass headers (`X-Bypass-Cache: true`).
+
+### 7. Offline Demonstration & Mock Mode
+- Complete feature exploration without requiring a live `GEMINI_API_KEY`.
+- Heuristic-based mock engine returns realistic, schema-valid jury verdicts and synthetic responses.
+- Interactive toggle in the UI Arena and Dressing Room settings.
+
+### 8. Model Benchmark Leaderboard (`/benchmarks`)
 - Server-side aggregated statistics across completed evaluation runs.
 - Tracks win rates, loss rates, ties, average judge confidence, and peak confidence per model.
-- Server-enforced query ceilings to maintain fast response times.
 
-### 7. Historical Audit Trail (`/history`)
+### 9. Historical Audit Trail (`/history`)
 - Complete historical record of all evaluated runs with expandable verdict cards.
 - Inspect exact judge reasoning, individual rater scores, and detected bias flags.
 
-### 8. Real-Time Broadcast Sync
+### 10. Real-Time Broadcast Sync
 - Integrated Supabase Realtime broadcast channel (`experiment:complete`) to synchronize state updates across browser windows and team members.
 
 ---
@@ -100,25 +113,27 @@ Verdict Lab solves these challenges through **structured test card authoring**, 
 │  (Node.js / tsx on Port 3000) │               │
 │  - Helmet Security Headers    │               │
 │  - Rate Limiting (express)    │               │
+│  - Evaluation Cache Layer     │               │
+│  - Offline Mock Engine        │               │
 │  - Input Schema Validation    │               │
 │  - Isolated GEMINI_API_KEY    │               │
-└───────────────┬───────────────┘               │
-                │                               │
-        Google GenAI SDK                        │
-     (@google/genai 1.29.0)                     │
-                │                               │
-┌───────────────▼───────────────┐   ┌───────────▼─────────────┐
-│     Google Gemini Models      │   │    Firebase Firestore   │
-│  - gemini-3.1-pro-preview     │   │  - test_cards           │
-│  - gemini-3.5-flash           │   │  - test_card_versions   │
-│  - gemini-2.5-flash           │   │  - experiments          │
-└───────────────────────────────┘   └─────────────────────────┘
+└───────┬───────────────┬───────┘               │
+        │               │                       │
+ Google GenAI SDK  Mock Engine                  │
+ (@google/genai)   (Offline)                    │
+        │               │                       │
+┌───────▼───────┐ ┌─────▼───────┐   ┌───────────▼─────────────┐
+│ Gemini Models │ │ Mock Engine │   │    Firebase Firestore   │
+│ - 3.1 Pro     │ │ Determin-   │   │  - test_cards           │
+│ - 3.5 Flash   │ │ istic Eval  │   │  - test_card_versions   │
+│ - 2.5 Flash   │ │ Schema      │   │  - experiments          │
+└───────────────┘ └─────────────┘   └─────────────────────────┘
 ```
 
 - **Frontend**: React 19, TypeScript, Vite 6, Tailwind CSS v4, Motion, Lucide Icons, Zustand
-- **Backend Gateway**: Express 4, Node.js, `@google/genai` SDK, `helmet`, `express-rate-limit`
+- **Backend Gateway**: Express 4, Node.js, `@google/genai` SDK, `helmet`, `express-rate-limit`, `crypto` SHA-256 caching
 - **Persistence & Cloud**: Firebase Firestore (document store & security rules), Supabase (real-time broadcast)
-- **Testing**: Vitest 4
+- **Testing**: Vitest 4, Supertest (mocked gateway integration tests)
 
 For comprehensive architectural specifications, consult [ARCHITECTURE.md](./ARCHITECTURE.md).
 
@@ -146,11 +161,32 @@ The server will start at `http://localhost:3000` (binding to `0.0.0.0:3000`).
 
 ---
 
+## Offline / Mock Evaluation Mode
+
+Verdict Lab includes a built-in deterministic simulation engine that allows testing and demonstrating the full application without requiring a Gemini API key.
+
+- **Enable via UI**: Go to **Arena** or **Dressing Room** and toggle **MOCK EVALUATION MODE**.
+- **Enable via Header**: Pass `X-Mock-Mode: true` on requests to `/api/evaluate` or `/api/inference`.
+- **Enable via Query**: Add `?mock=true` to any API request.
+
+---
+
+## Evaluation Cache Layer
+
+To avoid redundant LLM invocations and reduce costs during iterative prompt authoring, the Express gateway automatically computes a SHA-256 hash of each evaluation payload.
+
+- **Cache Header**: Responses contain `X-Cache: HIT` or `X-Cache: MISS`.
+- **Bypass Cache**: Send `X-Bypass-Cache: true` header to force a fresh model evaluation.
+- **Cache Telemetry**: Accessible via `GET /api/cache/stats` and viewable in the **Dressing Room**.
+- **Flush Cache**: Send `POST /api/cache/clear` or click "Flush Cache" in the Dressing Room.
+
+---
+
 ## Environment Configuration
 
 | Variable | Location | Description |
 |---|---|---|
-| `GEMINI_API_KEY` | Server (`.env`) | **Required**. Google Gemini API key used by the backend evaluation and inference endpoints. |
+| `GEMINI_API_KEY` | Server (`.env`) | **Required for live mode**. Google Gemini API key used by backend evaluation and inference endpoints. |
 | `VITE_SUPABASE_URL` | Client (optional) | Supabase project URL for optional cross-window real-time event broadcasting. |
 | `VITE_SUPABASE_ANON_KEY` | Client (optional) | Supabase public anon key for real-time pub/sub channels. |
 
@@ -165,19 +201,19 @@ The server will start at `http://localhost:3000` (binding to `0.0.0.0:3000`).
 | `/registry` | **Protocol Registry** | Browse, filter, and clone existing test card protocols and benchmark suites. |
 | `/benchmarks` | **Leaderboard** | View aggregated model performance metrics, win rates, and inter-rater agreement statistics. |
 | `/history` | **Run History** | Detailed audit logs of all past experiment evaluations, verdicts, and bias flags. |
-| `/profile` | **Dressing Room** | Configure active workspace preferences, default temperature, top-P, and test parameters. |
+| `/profile` | **Dressing Room** | Configure workspace preferences, Mock Mode toggle, view Evaluation Cache stats, and flush cache. |
 | `/about` | **System Manual** | Comprehensive guide explaining JDay engine mechanics, protocol design best practices, and FAQ. |
 
 ---
 
 ## API Gateway Reference
 
-The Express server exposes dedicated API endpoints under `/api/` protected by rate limiting and input validation:
+The Express server exposes dedicated API endpoints under `/api/` protected by rate limiting, validation, and caching:
 
 ### 1. `POST /api/evaluate`
 Executes multi-judge consensus evaluation across two prompt completions.
 - **Rate Limit**: 30 requests/minute per IP
-- **Input Constraints**: Maximum 50,000 characters per variant, maximum 3 judge models, maximum 15 rubric metrics.
+- **Cache Behavior**: Checks SHA-256 in-memory cache; returns `X-Cache: HIT` on identical evaluations.
 - **Request Body**:
   ```json
   {
@@ -188,7 +224,8 @@ Executes multi-judge consensus evaluation across two prompt completions.
       "Accuracy": { "max": 10, "weight": 0.5 },
       "Conciseness": { "max": 10, "weight": 0.5 }
     },
-    "models": ["gemini-3.5-flash", "gemini-3.1-pro-preview"]
+    "models": ["gemini-3.5-flash", "gemini-3.1-pro-preview"],
+    "mockMode": false
   }
   ```
 - **Response**:
@@ -204,37 +241,36 @@ Executes multi-judge consensus evaluation across two prompt completions.
     "bias_flags": [],
     "reasoning": "[Judge gemini-3.5-flash]: Variant A strictly adhered to...",
     "inter_rater_reliability": 1.0,
-    "judges": ["gemini-3.5-flash", "gemini-3.1-pro-preview"]
+    "judges": ["gemini-3.5-flash", "gemini-3.1-pro-preview"],
+    "cached": false,
+    "isMock": false
   }
   ```
 
 ### 2. `POST /api/inference`
 Executes single-model completion with safe hyperparameter allowlisting.
-- **Rate Limit**: 30 requests/minute per IP
-- **Request Body**:
-  ```json
-  {
-    "prompt": "Summarize the following document...",
-    "systemInstruction": "You are a technical analyst...",
-    "config": {
-      "temperature": 0.2,
-      "maxOutputTokens": 1024
-    }
-  }
-  ```
 
-### 3. `GET /api/leaderboard`
-Returns server-aggregated model performance statistics computed from stored experiments with an enforced read ceiling (max 200 documents).
+### 3. `GET /api/cache/stats`
+Returns cache metrics (`hits`, `misses`, `size`, `hitRatio`, `evictions`).
+
+### 4. `POST /api/cache/clear`
+Flushes the in-memory evaluation cache.
 
 ---
 
 ## Verification & Testing
 
-Verdict Lab includes an automated test suite powered by Vitest to verify consensus tally math, tie resolution, variable extraction, and regex safety.
+Verdict Lab includes a comprehensive test suite powered by Vitest and Supertest:
 
 ```bash
-# Run unit tests
+# Run all tests (unit + gateway integration)
 npm run test
+
+# Run Supertest API gateway integration tests only
+npm run test:integration
+
+# Run JDay consensus math unit tests only
+npm run test:unit
 
 # Run TypeScript type check / linting
 npm run lint
@@ -248,11 +284,26 @@ npm run start
 
 ---
 
+## Local Firebase Emulator
+
+For offline development and Firestore security rules verification:
+
+```bash
+# Start local Firestore and Auth emulators with UI
+npm run emulators:start
+
+# Execute tests against the local emulator
+npm run emulators:exec
+```
+
+---
+
 ## Canonical Documentation
 
 For detailed information, please consult the authoritative documents:
 
-- **[ARCHITECTURE.md](./ARCHITECTURE.md)**: System design, data flow, Firestore security model, and architectural invariants.
+- **[ARCHITECTURE.md](./ARCHITECTURE.md)**: System design, cache layer specifications, data flow, and architectural invariants.
 - **[CONTRIBUTING.md](./CONTRIBUTING.md)**: Development guidelines, coding standards, and testing procedures.
 - **[SECURITY.md](./SECURITY.md)**: Security boundaries, secret key isolation, rate limits, and vulnerability reporting.
+- **[REPOSITORY_STATUS.md](./REPOSITORY_STATUS.md)**: Comprehensive repository audit and production-readiness status.
 - **[.llm-context/context.md](./.llm-context/context.md)**: Operational rules and architectural constraints for AI coding agents.

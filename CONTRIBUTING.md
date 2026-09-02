@@ -7,9 +7,9 @@ Thank you for your interest in contributing to **Verdict Lab**! We welcome contr
 ## 1. Prerequisites
 
 Ensure you have the following installed in your local environment:
-- **Node.js**: Version 18.x or higher (LTS recommended)
+- **Node.js**: Version 18.x or higher (LTS recommended, see `.nvmrc`)
 - **npm**: Version 9.x or higher
-- **Google Gemini API Key**: Obtain a key from [Google AI Studio](https://aistudio.google.com/) for running local evaluation tests.
+- **Google Gemini API Key** (Optional): If you wish to test live LLM completions, obtain a key from [Google AI Studio](https://aistudio.google.com/). You can also develop completely offline using **Mock Evaluation Mode**.
 
 ---
 
@@ -31,7 +31,7 @@ Ensure you have the following installed in your local environment:
    ```bash
    cp .env.example .env
    ```
-   Add your Gemini API key:
+   Add your Gemini API key (or leave empty if using Mock Mode):
    ```env
    GEMINI_API_KEY=your_actual_gemini_api_key_here
    ```
@@ -50,10 +50,11 @@ Before making changes, please familiarize yourself with the codebase structure:
 
 ```
 ├── server.ts                    # Express API gateway & Vite dev middleware
+├── firebase.json                # Firebase emulator suite configuration
+├── firestore.rules              # Firebase Firestore security rules
 ├── index.html                   # Browser entry point
 ├── package.json                 # Project dependencies and lifecycle scripts
 ├── tsconfig.json                # TypeScript compiler configuration
-├── firestore.rules              # Firebase Firestore security rules
 ├── src/
 │   ├── main.tsx                 # React DOM client entry point
 │   ├── App.tsx                  # Root router and layout shell
@@ -61,8 +62,13 @@ Before making changes, please familiarize yourself with the codebase structure:
 │   ├── components/              # Modular, reusable UI components
 │   ├── pages/                   # Top-level view routes (/arena, /lab, etc.)
 │   ├── services/                # Client API callers (geminiService, metricsService)
+│   ├── server/                  # Server utilities
+│   │   ├── evalCache.ts         # In-memory SHA-256 evaluation cache
+│   │   └── mockEngine.ts        # Offline deterministic evaluation simulation
 │   ├── store/                   # Global Zustand state management
-│   ├── tests/                   # Vitest unit test specifications
+│   ├── tests/                   # Test specifications
+│   │   ├── JDay.test.ts         # Unit tests for consensus math & regex safety
+│   │   └── api.test.ts          # Supertest Express API gateway integration tests
 │   └── lib/                     # Firebase, Supabase, and utility helpers
 ```
 
@@ -95,16 +101,23 @@ Please review **[ARCHITECTURE.md](./ARCHITECTURE.md)** for in-depth system diagr
 - **Port 3000 Invariant**: The server must always listen on `0.0.0.0:3000`. Do not change the port binding.
 - **Secret Isolation**: `GEMINI_API_KEY` must **never** be exposed in client code or prefixed with `VITE_`. All model calls must go through `/api/evaluate` or `/api/inference`.
 - **Input Validation**: All new endpoints must enforce strict input validation, length limits, and rate limiting.
+- **Evaluation Caching**: Cache key calculations must use deterministic canonical representations via `evalCache.generateKey()`.
 
 ---
 
 ## 5. Testing & Verification
 
-All contributions modifying core evaluation logic, regex parsers, or tally algorithms must include automated test coverage:
+All contributions modifying core evaluation logic, regex parsers, API endpoints, or tally algorithms must pass the automated test suite:
 
 ```bash
-# Run unit test suite
+# Run all tests (unit + integration)
 npm run test
+
+# Run Supertest API gateway integration tests
+npm run test:integration
+
+# Run JDay consensus math unit tests
+npm run test:unit
 
 # Run TypeScript type check
 npm run lint
@@ -113,7 +126,15 @@ npm run lint
 npm run build
 ```
 
-Unit tests reside in `src/tests/` and are executed using **Vitest**. If you introduce a new scoring heuristic or variable parser, write corresponding tests in `src/tests/`.
+### 5.1 Local Firebase Emulator Testing
+To run tests against a local Firestore emulator without connecting to cloud services:
+```bash
+# Start emulators
+npm run emulators:start
+
+# Execute tests with emulator lifecycle
+npm run emulators:exec
+```
 
 ---
 
