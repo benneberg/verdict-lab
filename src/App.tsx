@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, Link, useLocation, useNavigate } from 'react-router-dom';
+import { HashRouter, Routes, Route, Navigate, Link, useLocation, useNavigate } from 'react-router-dom';
 import { 
   onAuthStateChanged, 
   signInWithPopup, 
@@ -314,12 +314,32 @@ export default function App() {
         });
       } else {
         const currentUser = useStore.getState().user;
-        if (!currentUser?.isGuest) {
-          setUser(null);
+        if (!currentUser) {
+          // If on a public static demo (such as GitHub Pages), auto-provision guest researcher session
+          const isGitHubPages = typeof window !== 'undefined' && (
+            window.location.hostname.includes('github.io') ||
+            (window.location.hostname === 'localhost' && window.location.port === '4173')
+          );
+          if (isGitHubPages) {
+            setUser({
+              id: 'demo_guest_researcher',
+              email: 'guest@verdict-lab.demo',
+              displayName: 'Guest Researcher',
+              isGuest: true
+            });
+            useStore.getState().setMockMode(true);
+          } else {
+            setUser(null);
+          }
         }
       }
       setInitializing(false);
     });
+
+    // Safety timeout to ensure app never hangs on INITIALIZING_LAB_FACILITY if external auth is delayed
+    const authSafetyTimeout = setTimeout(() => {
+      setInitializing(false);
+    }, 1500);
 
     // Optional sync with Supabase if configured for real-time collaboration
     let supabaseUnsubscribe = () => {};
@@ -342,13 +362,14 @@ export default function App() {
     }
 
     return () => {
+      clearTimeout(authSafetyTimeout);
       firebaseUnsubscribe();
       supabaseUnsubscribe();
     };
   }, [setUser, setInitializing]);
 
   return (
-    <BrowserRouter>
+    <HashRouter>
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/" element={
@@ -414,7 +435,9 @@ export default function App() {
             </Layout>
           </ProtectedRoute>
         } />
+        {/* Wildcard catch-all: redirects unknown routes to root */}
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-    </BrowserRouter>
+    </HashRouter>
   );
 }
