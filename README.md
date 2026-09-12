@@ -19,7 +19,7 @@ Rather than relying on informal "eyeball checks" or subjective qualitative impre
 
 ## Table of Contents
 
-- [The Problem We Solve](#the-problem-we-solve)
+- [The Problem To Solve](#the-problem-we-solve)
 - [Core Capabilities](#core-capabilities)
 - [Architecture & Tech Stack](#architecture--tech-stack)
 - [Quick Start](#quick-start)
@@ -34,7 +34,7 @@ Rather than relying on informal "eyeball checks" or subjective qualitative impre
 
 ---
 
-## The Problem We Solve
+## The Problem To Solve
 
 Optimizing system instructions and user prompt templates for production AI applications often suffers from several critical failure modes:
 
