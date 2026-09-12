@@ -9,12 +9,14 @@
 [![Vitest](https://img.shields.io/badge/Tested_with-Vitest-6e9f18.svg?logo=vitest)](https://vitest.dev/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
+[Demo](https://benneberg.github.io/verdict-lab/) The demo version is just a mocked clientside for github pages. 
+
 > **Empirical Prompt Engineering & LLM Behavioral Evaluation Workbench**
-[Demo](https://benneberg.github.io/verdict-lab/) (The demo is just a mocked clientside version for github pages)
+
 Verdict Lab is a full-stack developer workbench designed to bring scientific rigor, repeatable benchmarking, and bias-aware evaluation to prompt engineering and LLM application development. 
 
 Rather than relying on informal "eyeball checks" or subjective qualitative impressions, Verdict Lab enables AI engineers and researchers to formulate testable hypotheses, isolate prompt variables, run side-by-side pairwise comparisons, and score model completions using a panel of automated LLM judges (the **JDay Consensus Engine**).
-
+ 
 ---
 
 ## Table of Contents
