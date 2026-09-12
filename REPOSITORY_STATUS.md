@@ -44,6 +44,7 @@ Generated based strictly on codebase evidence and execution verification within 
 2. **Evaluation Cache Layer**: Implemented `src/server/evalCache.ts` using deterministic SHA-256 hashing of evaluation payloads with LRU eviction, `X-Cache: HIT/MISS` headers, bypass controls, and telemetry endpoints (`/api/cache/stats`, `/api/cache/clear`).
 3. **Offline / Mock Evaluation Mode**: Implemented `src/server/mockEngine.ts` providing deterministic, schema-compliant evaluation heuristics and synthetic text inference, with interactive UI toggle switches in the Arena and Dressing Room.
 4. **Local Firebase Emulator Configuration**: Configured `firebase.json` and added `emulators:start` and `emulators:exec` scripts to `package.json` for offline Firestore security rule testing.
+5. **GitHub Pages Demo Deployment Configuration**: Added automated GitHub Actions workflow (`.github/workflows/deploy-pages.yml`), relative base path resolution (`vite.config.ts`), `public/404.html` SPA routing redirect handler, and seamless client-side fallback in `geminiService.ts` to `mockEngine.ts` for zero-server static hosting.
 
 ---
 

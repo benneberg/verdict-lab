@@ -1,5 +1,6 @@
 import { auth } from '../lib/firebase';
 import { useStore } from '../store/useStore';
+import { generateMockEvaluation, generateMockInference } from '../server/mockEngine';
 
 export interface RubricMetric {
   max: number;
@@ -67,9 +68,10 @@ export async function evaluateResponses(
   models: string[] = ["gemini-3.5-flash"],
   options: EvaluationOptions = {}
 ): Promise<EvaluationResult> {
+  const isMock = options.mockMode ?? useStore.getState().mockMode;
+
   try {
     const headers = await getAuthHeaders(options);
-    const isMock = options.mockMode ?? useStore.getState().mockMode;
 
     const response = await fetch("/api/evaluate", {
       method: "POST",
@@ -85,20 +87,31 @@ export async function evaluateResponses(
       }),
     });
 
-    if (!response.ok) {
-      const errData = await response.json().catch(() => ({}));
-      throw new Error(errData.error || `Server-side evaluation error (Status ${response.status})`);
+    if (response.ok) {
+      const data = await response.json();
+      const isCached = response.headers.get("X-Cache") === "HIT" || data.cached === true;
+      return {
+        ...data,
+        cached: isCached,
+      };
     }
 
-    const data = await response.json();
-    const isCached = response.headers.get("X-Cache") === "HIT" || data.cached === true;
+    // On static hosting (like GitHub Pages) where /api/evaluate returns 404,
+    // or if mock mode is active, gracefully run deterministic client-side mock evaluation
+    if (response.status === 404 || isMock) {
+      console.info("Using client-side mock evaluation engine (static demo mode).");
+      return generateMockEvaluation({ variantA, variantB, rubric, hypothesis, models });
+    }
 
-    return {
-      ...data,
-      cached: isCached,
-    };
+    const errData = await response.json().catch(() => ({}));
+    throw new Error(errData.error || `Server-side evaluation error (Status ${response.status})`);
   } catch (error: any) {
-    console.error("Failed to run secure evaluation:", error);
+    // If running on static host with no backend (fetch network error or 404)
+    if (isMock || error?.message?.includes("Failed to fetch") || error?.name === "TypeError") {
+      console.info("Static host detected. Executing client-side JDay simulation.");
+      return generateMockEvaluation({ variantA, variantB, rubric, hypothesis, models });
+    }
+    console.error("Failed to run evaluation:", error);
     throw error;
   }
 }
@@ -109,9 +122,10 @@ export async function runInference(
   config?: any,
   options: EvaluationOptions = {}
 ): Promise<string> {
+  const isMock = options.mockMode ?? useStore.getState().mockMode;
+
   try {
     const headers = await getAuthHeaders(options);
-    const isMock = options.mockMode ?? useStore.getState().mockMode;
 
     const response = await fetch("/api/inference", {
       method: "POST",
@@ -124,27 +138,50 @@ export async function runInference(
       }),
     });
 
-    if (!response.ok) {
-      const errData = await response.json().catch(() => ({}));
-      throw new Error(errData.error || `Server-side inference error (Status ${response.status})`);
+    if (response.ok) {
+      const data = await response.json();
+      return data.text || "";
     }
 
-    const data = await response.json();
-    return data.text || "";
+    // Fallback to client mock generation for static demo environments
+    if (response.status === 404 || isMock) {
+      return generateMockInference(prompt, systemInstruction);
+    }
+
+    const errData = await response.json().catch(() => ({}));
+    throw new Error(errData.error || `Server-side inference error (Status ${response.status})`);
   } catch (error: any) {
-    console.error("Failed to run secure inference:", error);
+    if (isMock || error?.message?.includes("Failed to fetch") || error?.name === "TypeError") {
+      return generateMockInference(prompt, systemInstruction);
+    }
+    console.error("Failed to run inference:", error);
     throw error;
   }
 }
 
 export async function getCacheStats() {
-  const response = await fetch("/api/cache/stats");
-  if (!response.ok) throw new Error("Failed to fetch cache statistics");
-  return response.json();
+  try {
+    const response = await fetch("/api/cache/stats");
+    if (response.ok) return await response.json();
+  } catch {
+    // Fallback for static demo environments
+  }
+  return {
+    hits: 24,
+    misses: 5,
+    size: 7,
+    hitRatio: 0.828,
+    evictions: 0,
+    isStaticDemo: true,
+  };
 }
 
 export async function clearEvaluationCache() {
-  const response = await fetch("/api/cache/clear", { method: "POST" });
-  if (!response.ok) throw new Error("Failed to clear cache");
-  return response.json();
+  try {
+    const response = await fetch("/api/cache/clear", { method: "POST" });
+    if (response.ok) return await response.json();
+  } catch {
+    // Fallback for static demo environments
+  }
+  return { success: true, message: "Client demo cache reset successfully." };
 }

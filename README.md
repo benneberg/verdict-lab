@@ -29,6 +29,7 @@ Rather than relying on informal "eyeball checks" or subjective qualitative impre
 - [Application Views & Workflow](#application-views--workflow)
 - [API Gateway Reference](#api-gateway-reference)
 - [Verification & Testing](#verification--testing)
+- [Deploy to GitHub Pages (Demo Mode)](#deploy-to-github-pages-demo-mode)
 - [Local Firebase Emulator](#local-firebase-emulator)
 - [Canonical Documentation](#canonical-documentation)
 
@@ -280,6 +281,35 @@ npm run build
 
 # Start production server
 npm run start
+```
+
+---
+
+## Deploy to GitHub Pages (Demo Mode)
+
+Verdict Lab includes automated configuration to build and deploy as an interactive client-side demo on **GitHub Pages**:
+
+### How It Works
+- **Zero-Server Static Demo**: GitHub Pages serves the pre-compiled SPA from `dist/`.
+- **Client-Side Simulation Engine**: When deployed statically without the Express API Gateway, Verdict Lab seamlessly executes the deterministic heuristic engine (`mockEngine.ts`) directly inside the user's browser.
+- **Full Interactivity**: Visitors can explore the Pairwise Arena, run test card evaluations, trigger batch datasets, inspect version diffs, and test consensus scoring with zero server costs or API key leaks.
+- **SPA Routing Handling**: Uses `404.html` fallback redirection to support direct URL access and page refreshes on GitHub Pages subpaths.
+
+### Deployment Steps
+
+1. In your GitHub repository, navigate to **Settings** > **Pages**.
+2. Under **Build and deployment** > **Source**, select **GitHub Actions**.
+3. Push your repository to the `main` branch.
+4. The automated workflow [`.github/workflows/deploy-pages.yml`](./.github/workflows/deploy-pages.yml) will trigger automatically, compile the static client bundle, and publish the demo to:
+   ```
+   https://<your-github-username>.github.io/<repository-name>/
+   ```
+5. You can also trigger the deployment manually anytime from the **Actions** tab by selecting **Deploy Demo to GitHub Pages** > **Run workflow**.
+
+To test the static Pages build locally prior to pushing:
+```bash
+npm run build:pages
+npm run preview
 ```
 
 ---
