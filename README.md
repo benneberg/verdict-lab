@@ -15,6 +15,7 @@ Verdict Lab is a full-stack developer workbench designed to bring scientific rig
 
 Rather than relying on informal "eyeball checks" or subjective qualitative impressions, Verdict Lab enables AI engineers and researchers to formulate testable hypotheses, isolate prompt variables, run side-by-side pairwise comparisons, and score model completions using a panel of automated LLM judges (the **JDay Consensus Engine**).
 
+[Demo](https://benneberg.github.io/verdict-lab/), mocked clientside 
 ---
 
 ## Table of Contents
